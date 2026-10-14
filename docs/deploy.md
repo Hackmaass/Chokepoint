@@ -65,6 +65,14 @@ only their own receipts, and ids are derived from inputs so repeated requests do
 - **Rate limits**: the free model is limited (the client enforces 30 requests per minute and retries). At most two agent runs execute at once; a third gets HTTP 429. Replay mode serves saved runs with no model call.
 - **Rotate secrets** after the event: the NVIDIA key and `FALKORDB_PASSWORD`.
 
+## Verified path
+
+This exact path was run from a clean clone into an isolated stack (own database, volume and ports) on 2026-10-15:
+`docker compose --profile seed run --rm seed` downloaded the dataset, verified its checksum and loaded 4,487,133 transfers
+(172 s); `--profile app` served the UI and API; all eight saved agent runs replayed from `replays/` against the freshly loaded
+graph; a tools-only run produced the same plan id as on the development database (ids are derived from inputs); the replay and
+extraction-parity tests passed against it. The stack was then removed. A public TLS host was not tested (no host chosen yet).
+
 ## Demo-day checklist
 
 1. `GET /api/health` returns ok; the UI loads from a clean browser over HTTPS.
