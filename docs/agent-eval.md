@@ -66,5 +66,5 @@ accepted now (whole dollars, and 5% for amounts written with a suffix).
 
 **What the product does about it:** the agent now runs the same check on every final answer and the interface shows a warning
 ("This summary mentions a figure that no tool returned") with the offending figures, and the numbers on the cards and tables
-always come from tools. So the sentence "every number on a card comes from a tool" is true by construction; for the narrative it is
+always come from tools. So "the numbers on the cards come from tools" is true by construction; for the narrative it is
 checked, and an unmatched figure is flagged to the user rather than silently shown.

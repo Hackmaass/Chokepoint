@@ -305,7 +305,7 @@ export default function App() {
           <div className="panel">
             <div className="row">
               <div className="field">
-                <label htmlFor="ex">Example alert</label>
+                <label htmlFor="ex">Example alert (chosen where a rule of thumb leaves money movable)</label>
                 <select id="ex" className="input" value={exSel} onChange={(e) => { const x = examples[Number(e.target.value)]; if (x) { setAccount(x.account); setAlertTs(x.alert_ts) } }}>
                   {exSel < 0 && <option value={-1}>Custom</option>}
                   {examples.map((x, i) => (
@@ -405,7 +405,7 @@ export default function App() {
                   <span className="banner" role="note"><span className="ico" aria-hidden>!</span><span>This summary mentions a figure that no tool returned ({[...unmatched.unmatched_amounts, ...unmatched.unmatched_accounts].join(', ')}). Rely on the cards and tables, not the text.</span></span>
                 )}
                 <span className="note" style={{ display: 'block' }}>
-                  {cachedRun ? 'Replay: this is a saved run, not a live response. ' : ''}The model writes the words; every number comes from the tools.
+                  {cachedRun ? 'Replay: this is a saved run, not a live response. ' : ''}The model writes the words; the numbers on the cards come from the tools, and this summary is checked against them.
                 </span>
               </p>
             )}

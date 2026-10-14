@@ -22,9 +22,11 @@ Given an alerted account and an alert time, the agent:
 4. **Verifies the plan** on a copy of the graph with the frozen accounts deleted: is any route left?
 5. **Stores every result as a node with a receipt** (tool run, parameters, data version, solver, accounts read), so a case can be resumed in a later session and any answer can be traced back.
 
-The alerted account is treated as already frozen (its money has moved on). The language model chooses tools and their arguments and writes a short summary; **every number on screen comes from a tool, never from the model**. If there is no route, it widens the window or the perimeter (at most twice) and says so; if a plan is too large to act on it refuses to recommend it.
+The alerted account is treated as already frozen (its money has moved on). The language model chooses tools and their arguments and writes a short summary; **the numbers on the cards and tables come only from tools; the model's short summary is checked against the tool results, and any figure no tool returned is flagged to the user**. If there is no route, it widens the window or the perimeter (at most twice) and says so; if a plan is too large to act on it refuses to recommend it.
 
 ![Chokepoint main screen](docs/screenshot.jpg)
+
+> **About the example alerts.** The eight alerts in the picker are drawn from the synthetic laundering patterns and were kept only where the rule-of-thumb plan leaves at least a quarter of the movable money (so the comparison is visible). They are not typical: the held-out numbers below are. Case selection uses laundering labels; the planner never sees them.
 
 ## Results (held-out evaluation, synthetic data)
 
@@ -189,7 +191,7 @@ IBM "HI-Small" synthetic transactions (Altman et al., NeurIPS 2023 Datasets and 
 
 ## AI assistance disclosure
 
-I used an AI coding assistant (Claude Code) for research, planning, code, tests and documentation, and I review everything it produces. A daily log is in [`docs/ai-work-log.md`](docs/ai-work-log.md). The agent inside the product uses a free NVIDIA Nemotron model; numbers shown to users come from deterministic tools. **Pre-event preparation (Oct 14, before the event opened):** research and planning notes (ideas, a graph model sketch, evaluation design, checklists) containing no application code, and a short familiarisation with FalkorDB's documentation examples in a throwaway container (command line only, nothing saved). All code, data pipeline, tooling, interface, deployment and evaluation work in this repository was done after the event opened on Oct 15, 00:01 IST.
+An AI coding assistant (Claude Code) wrote most of the code, tests and documentation in this repository during the event, working on the author's instructions (much of it while the author was away). The author reviews the code and write-ups before submission and takes responsibility for the repository. A daily log is in [`docs/ai-work-log.md`](docs/ai-work-log.md). The agent inside the product uses a free NVIDIA Nemotron model; the numbers on its cards come from deterministic tools and its short summary is checked against them. **Pre-event preparation (Oct 14, before the event opened):** research and planning notes (ideas, a graph model sketch, evaluation design, checklists) containing no application code, and a short familiarisation with FalkorDB's documentation examples in a throwaway container (command line only, nothing saved). All code, data pipeline, tooling, interface, deployment and evaluation work in this repository was done after the event opened on Oct 15, 00:01 IST.
 
 ## Licence
 

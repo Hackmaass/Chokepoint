@@ -37,7 +37,7 @@ So I did not trust it blindly. A FalkorDB result is accepted only with a certifi
 - **Write the protocol before you look at the results.** I wrote down the dev/test split and the rule for choosing a configuration first. The result that disappeared on the held-out half would have shipped as a headline otherwise.
 - **Make tool output deterministic.** I wanted saved agent runs the demo can replay when the free model is slow. They kept missing because tool results were the same facts in a different key order, or carried a flag that depended on what had run before. Ids derived from inputs, canonical JSON, and a test that replays every example fixed it.
 - **Servers have operational edges.** `GRAPH.COPY` needs a fork and fails while a background save runs; I turned snapshots off (the append-only file already persists the data), retry, and fall back to building the second graph.
-- **The model should choose and explain; code should compute.** The LLM never writes Cypher and never produces a number on screen. A second agent, the auditor, reads only what the first one stored in the graph and records a verdict that code refuses to let it contradict.
+- **The model should choose and explain; code should compute.** The LLM never writes Cypher, the numbers on the cards come only from tools, and its short summary is checked against the tool results (in 120 evaluated runs one narrative mis-transcribed a figure; the interface now flags that). A second agent, the auditor, reads only what the first one stored in the graph and records a verdict that code refuses to let it contradict.
 
 ## Try it
 

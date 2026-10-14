@@ -1,5 +1,6 @@
 """The investigation agent: a manual tool loop over the Toolbox. The model chooses tools and arguments and
-writes a short narrative; every number on screen comes from tool results (see ``answer_card``)."""
+writes a short narrative; the numbers on the cards come from tool results (see ``answer_card``) and the narrative is
+checked against them (see ``faithful.py``)."""
 
 from __future__ import annotations
 
