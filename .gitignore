@@ -1,0 +1,35 @@
+# secrets
+.env
+.env.*
+*.env
+!.env.example
+
+# data and generated output (never commit datasets)
+data/
+scratch/
+.cache/
+llm_cache/
+*.csv
+*.parquet
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+*.egg-info/
+
+# node
+node_modules/
+web/dist/
+
+# editors / os
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# internal working log (not part of the public repo)
+STATUS.md

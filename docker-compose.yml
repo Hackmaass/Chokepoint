@@ -1,0 +1,22 @@
+# FalkorDB for Chokepoint. Image pinned by digest (v4.22.0, full image incl. Browser).
+# Needs FALKORDB_PASSWORD in the environment or in a git-ignored .env file next to this file.
+services:
+  falkordb:
+    image: falkordb/falkordb:v4.22.0@sha256:4ac83f55062d364dcf151692635138b0bd2e12578019a56eb86ef53d067b116b
+    container_name: chokepoint-falkordb
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"   # database (localhost only)
+      - "127.0.0.1:3000:3000"   # FalkorDB Browser (localhost only)
+    environment:
+      # The image default is "MAX_QUEUED_QUERIES 25 TIMEOUT 1000 RESULTSET_SIZE 10000".
+      # RESULTSET_SIZE silently truncates results, so it is raised and the app asserts row counts.
+      # TIMEOUT_DEFAULT is short on purpose: algo.maxFlow ignores per-query timeouts and can hang on
+      # some node-split networks, so the server-side default is what bounds it (it cancels cleanly).
+      FALKORDB_ARGS: "MAX_QUEUED_QUERIES 50 TIMEOUT_MAX 60000 TIMEOUT_DEFAULT 3000 RESULTSET_SIZE 1000000"
+      REDIS_ARGS: "--requirepass ${FALKORDB_PASSWORD:?set FALKORDB_PASSWORD} --appendonly yes"
+    volumes:
+      - falkordb_data:/var/lib/falkordb/data
+
+volumes:
+  falkordb_data:
