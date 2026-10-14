@@ -67,8 +67,12 @@ Cases with a route to the perimeter, mean of per-case values:
 - Absolute effect is limited by prediction: a plan built from the past cannot see transfers between
   accounts that have not dealt with each other yet. About 55-60% of cases block nothing at all (for
   every method); about 73% of post-alert laundering transfers touch the plan region (the ceiling).
-- More history helps (7 d better than 3 d); later alerts block more because more of the pattern is
-  visible, which supports the "speed matters" message.
+- More history helps (7 d better than 3 d). A later alert blocks a larger share of the *remaining* transfers
+  because more of the pattern is visible, but there is less left to stop: the share of the *whole* pattern
+  stopped falls with delay (see `docs/pilot-results.md`). Late alerts also understate collateral because
+  legitimate traffic stops after Sep 10.
+- This first pilot reused all 155 components for every sweep, so its best rows are optimistic. The held-out
+  results in `docs/pilot-results.md` supersede it.
 - λ > 0 trades some blocked laundering for lower collateral, as designed; at a 70% alert it falls
   slightly below degree on blocked share.
 - Collateral means are dominated by a few very large plans; medians are reported above.

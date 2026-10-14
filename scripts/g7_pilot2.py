@@ -27,6 +27,7 @@ ap.add_argument("--max-nodes", type=int, default=4000)
 ap.add_argument("--ks", default="3,4")
 ap.add_argument("--lambdas", default="0,0.5,1,2,4,8")
 ap.add_argument("--variants", default="static3,static7,trail")
+ap.add_argument("--cost", choices=["log", "linear"], default="log")
 ap.add_argument("--out", default="scratch/p2.csv")
 args = ap.parse_args()
 KS = [int(x) for x in args.ks.split(",")]
@@ -175,7 +176,8 @@ for ci, comp in enumerate(comps):
             cnt_order = sorted(hop1, key=lambda a: (-hop1_cnt.get(a, 0), a)) + [a for a in by_deg if a not in hop1_cnt]
             thr_order = sorted(freezable, key=lambda a: (-thr.get(a, 0), a))
             for lam in LAMS:
-                costs = {a: 100 + round(lam * 100 * math.log1p(base[a]) / math.log1p(maxb)) for a in freezable}
+                costs = ({a: 100 + round(lam * 100 * math.log1p(base[a]) / math.log1p(maxb)) for a in freezable} if args.cost == "log"
+                         else {a: 100 + round(10 * lam * base[a]) for a in freezable})
                 try:
                     net = build_split_network({str(a): c for a, c in costs.items()},
                                               [(str(a), str(b)) for a, b in trans], str(origin), [str(a) for a in exits])
