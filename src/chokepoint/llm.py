@@ -78,7 +78,7 @@ class LLMClient:
             return r.json()
         raise LLMError("LLM unavailable after retries (rate limited, timeouts or server errors)")
 
-    def chat(self, messages: list[dict], tools: list[dict] | None = None) -> ChatResult:
+    def chat(self, messages: list[dict], tools: list[dict] | None = None, tool_choice: str = "auto") -> ChatResult:
         """One model turn. A reply that is empty, or cut off by the token limit (the model spends part of the
         budget on hidden reasoning), is retried once with twice the budget."""
         t0 = time.time()
@@ -87,7 +87,7 @@ class LLMClient:
             body = {"model": self.s.llm_model, "messages": messages, "temperature": self.temperature,
                     "top_p": self.top_p, "max_tokens": self.max_tokens * (2**attempt)}
             if tools:
-                body.update(tools=tools, tool_choice="auto")
+                body.update(tools=tools, tool_choice=tool_choice)
             path = self._key(body)
             if self.mode != "off" and path.exists():
                 data, cached = json.loads(path.read_text(encoding="utf-8")), True

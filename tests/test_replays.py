@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from chokepoint.agent import run_agent
+from chokepoint.agent import AUDITOR_PROMPT, AUDITOR_SPECS, run_agent
 from chokepoint.config import PROJECT_ROOT
 from chokepoint.db import connect
 from chokepoint.llm import REPLAY_DIR, LLMClient
@@ -34,3 +34,8 @@ def test_every_example_replays_from_recordings(tb):
         assert not run.stopped, (ex["account"], run.events[-1])
         assert run.cached_calls == run.steps and run.final_text
         assert [t for t, _, _ in run.results] == ["open_case", "flow", "freeze_plan", "verify_plan"]
+        plan = next(r for t, _, r in run.results if t == "freeze_plan")
+        audit = run_agent(f"Audit plan {plan['plan_id']} for case {plan['case_id']}.", tb, llm,
+                          system=AUDITOR_PROMPT, specs=AUDITOR_SPECS)
+        assert not audit.stopped and audit.cached_calls == audit.steps, (ex["account"], audit.events[-1])
+        assert [t for t, _, _ in audit.results][-1] == "submit_audit"

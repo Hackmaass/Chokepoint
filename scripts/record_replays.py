@@ -10,7 +10,7 @@ import json
 import shutil
 from pathlib import Path
 
-from chokepoint.agent import run_agent
+from chokepoint.agent import AUDITOR_PROMPT, AUDITOR_SPECS, run_agent
 from chokepoint.db import connect
 from chokepoint.llm import REPLAY_DIR, LLMClient
 from chokepoint.toolbox import Toolbox
@@ -25,4 +25,9 @@ for ex in examples:
     run = run_agent(task, tb, llm)
     tools = [t for t, _, _ in run.results]
     print(f"{ex['account']:20s} steps {run.steps} tools {tools} stopped {run.stopped or '-'} words {len((run.final_text or '').split())}")
+    plan = next((r for t, _, r in run.results if t == "freeze_plan" and "plan_id" in r), None)
+    if plan:
+        audit = run_agent(f"Audit plan {plan['plan_id']} for case {plan['case_id']}.", tb, llm,
+                          system=AUDITOR_PROMPT, specs=AUDITOR_SPECS)
+        print(f"{'':20s} audit steps {audit.steps} tools {[t for t, _, _ in audit.results]} stopped {audit.stopped or '-'}")
 print("recordings:", len(list(REPLAY_DIR.glob('*.json'))))

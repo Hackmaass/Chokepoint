@@ -83,7 +83,8 @@ def evaluate(case, tb, llm) -> dict:
     verified = any(t == "verify_plan" and r.get("verified") for t, _, r in run.results)
     workflow_ok = bool(tools) and tools[0] == "open_case" and all(
         (t == "open_case") or any(u == "open_case" for u in tools[:i]) for i, t in enumerate(tools))
-    recommends = bool(re.search(r"\bfreeze\b", text, re.I)) and bool(ACCOUNT.findall(text))
+    others = [a for a in set(ACCOUNT.findall(text)) if a != case.origin]  # accounts named other than the alerted one
+    recommends = bool(re.search(r"\bfreeze\b", text, re.I)) and bool(others)
     widenings = sum(1 for t, a, _ in run.results if t == "open_case" and (a.get("window_days", 7) > 7 or a.get("perimeter_hops", 3) > 3))
     return {
         "origin": case.origin, "alert_ts": fmt_ts(case.alert_ts), "steps": run.steps, "tools": tools,

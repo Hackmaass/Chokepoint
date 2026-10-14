@@ -69,7 +69,10 @@ perimeter_hops (up to 4), open a new case, and say what you changed and why. Sto
 4. If freeze_plan says actionable is false, do not recommend it: try perimeter_hops 2 or a shorter window, or say \
 the plan is not actionable.
 5. Only recommend a plan after verify_plan returns verified true. Say what verification does and does not show.
-6. Final answer, at most 120 words, plain language: the accounts to freeze (how many and why those), money that could \
+6. If open_case returns CASE_TOO_LARGE even with window_days 1 and perimeter_hops 2, stop: the alerted account is a \
+high-volume hub that cannot be analysed here. Say so; do not keep retrying. Never repeat a call that already failed \
+with the same arguments.
+7. Final answer, at most 120 words, plain language: the accounts to freeze (how many and why those), money that could \
 move before and after (USD from the tools), how the rule-of-thumb plan compares, and one limit (static view of past \
 transfers; synthetic data). Do not say the plan "finds hidden accounts".
 Write amounts in dollars from usd_cents / 100."""
@@ -144,10 +147,16 @@ def run_agent(task: str, toolbox: Toolbox, llm: LLMClient, max_steps: int = 10,
     tools = [{"type": "function", "function": t} for t in (specs or TOOL_SPECS)]
     messages = [{"role": "system", "content": system}, {"role": "user", "content": task}]
     emit({"type": "start", "task": task})
+    errors_in_a_row, nudged = 0, False
     for step in range(1, max_steps + 1):
         run.steps = step
+        if not nudged and (step == max_steps or errors_in_a_row >= 3):
+            # a loop guard: repeated failures or the last step force a plain-language answer instead of more calls
+            messages.append({"role": "user", "content": "Stop calling tools now. Give your final answer in plain "
+                             "language: what you found, what you tried, and what you could not do."})
+            nudged = True
         try:
-            res = llm.chat(messages, tools)
+            res = llm.chat(messages, tools, tool_choice="none" if nudged else "auto")
         except LLMError as e:
             run.stopped = "llm_error"
             emit({"type": "error", "message": str(e)})
@@ -175,12 +184,16 @@ def run_agent(task: str, toolbox: Toolbox, llm: LLMClient, max_steps: int = 10,
                       if args is None else toolbox.call(name, args))
             ms = int((time.perf_counter() - t0) * 1000)
             run.results.append((name, args or {}, result))
+            errors_in_a_row = errors_in_a_row + 1 if "error" in result else 0
             emit({"type": "tool_result", "step": step, "tool": name, "ms": ms, "ok": "error" not in result,
                   "summary": summarize(result), "result": result})
             model_view = {k: v for k, v in result.items() if k not in ("finding_id", "tool_call_id", "already_computed", "already_open", "data_version")}
             messages.append({"role": "tool", "tool_call_id": c["id"], "content": json.dumps(model_view, sort_keys=True)[:12000]})
     run.stopped = "max_steps"
-    emit({"type": "error", "message": f"stopped after {max_steps} steps without a final answer"})
+    last = next((r["error"] for _, _, r in reversed(run.results) if "error" in r), None)
+    run.final_text = ("I could not finish this investigation" + (f": {last['code']} - {last['message']}." if last else "."))
+    emit({"type": "final", "text": run.final_text, "cached": False})
+    emit({"type": "error", "message": f"stopped after {max_steps} steps without a model answer"})
     return run
 
 

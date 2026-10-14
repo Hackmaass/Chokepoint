@@ -10,10 +10,11 @@ from chokepoint.llm import ChatResult, LLMError
 
 class FakeLLM:
     def __init__(self, script):
-        self.script, self.calls = list(script), 0
+        self.script, self.calls, self.choices = list(script), 0, []
 
-    def chat(self, messages, tools=None):
+    def chat(self, messages, tools=None, tool_choice="auto"):
         self.calls += 1
+        self.choices.append(tool_choice)
         item = self.script.pop(0)
         if isinstance(item, Exception):
             raise item
@@ -88,6 +89,24 @@ def test_stops_after_max_steps():
     llm = FakeLLM([call("flow", {"case_id": "c-1"}, str(i)) for i in range(5)])
     run = run_agent("task", FakeToolbox(GOOD), llm, max_steps=3)
     assert run.stopped == "max_steps" and run.steps == 3 and llm.calls == 3
+
+
+def test_repeated_failures_force_a_plain_language_answer():
+    err = {"error": {"code": "CASE_TOO_LARGE", "message": "too big", "hint": "stop"}}
+    tb = FakeToolbox({**GOOD, "open_case": err})
+    llm = FakeLLM([call("open_case", {"account": "a", "alert_ts": "t"}, str(i)) for i in range(3)]
+                  + [{"role": "assistant", "content": "This account is too large to analyse."}])
+    run = run_agent("task", tb, llm, max_steps=10)
+    assert run.final_text == "This account is too large to analyse." and not run.stopped
+    assert llm.choices == ["auto", "auto", "auto", "none"] and len(tb.seen) == 3  # tools are switched off, not retried
+
+
+def test_a_model_that_ignores_the_stop_instruction_still_gets_a_deterministic_final_text():
+    err = {"error": {"code": "NO_PATH", "message": "no route", "hint": ""}}
+    tb = FakeToolbox({**GOOD, "freeze_plan": err})
+    llm = FakeLLM([call("freeze_plan", {"case_id": "c-1"}, str(i)) for i in range(6)])
+    run = run_agent("task", tb, llm, max_steps=4)
+    assert run.stopped == "max_steps" and "NO_PATH" in run.final_text
 
 
 def test_llm_failure_is_reported_not_raised():

@@ -130,7 +130,10 @@ class Toolbox:
         except UnknownAccount as e:
             return ToolError("UNKNOWN_ACCOUNT", f"account {e} not found").as_dict()
         except CaseTooLarge as e:
-            return ToolError("CASE_TOO_LARGE", str(e), "use a shorter window or fewer hops").as_dict()
+            return ToolError(
+                "CASE_TOO_LARGE", str(e),
+                "the smallest settings are window_days=1 and perimeter_hops=2; if those are still too large this "
+                "account is a high-volume hub that cannot be analysed here, so stop and say so").as_dict()
         except TruncatedResult as e:
             return ToolError("TRUNCATED_RESULT", str(e)).as_dict()
         except NoPath as e:
