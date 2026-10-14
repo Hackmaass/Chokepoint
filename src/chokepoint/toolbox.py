@@ -673,31 +673,35 @@ class Toolbox:
             "to_data_version": latest, "findings_checked": len(cur), "findings_rerun": len(affected),
             "findings_carried_forward": len(carried), "new_transfers_in_scope": sum(hits.values()),
             "changes": changes, "new_plan_id": new_plan_id,
-            "summary": (f"{len(affected)} of {len(cur)} findings used accounts that received new transfers and were "
-                        f"re-run; {len(carried)} were unaffected and carried forward"),
+            "summary": (f"{len(affected)} of {len(cur)} saved findings used accounts that received new transfers and "
+                        f"were re-run" + (f"; {len(carried)} were unaffected and carried forward" if carried else "")),
         }
 
     # Demo support: simulate late, back-dated transfers (synthetic, clearly labelled) and reset the demo state.
     def inject_late_transfers(self, case_id: str) -> dict:
+        """Simulate a late, back-dated route of the same length as the perimeter distance that bypasses the
+        frozen accounts: alerted account -> X1 -> ... -> perimeter account (synthetic, for the demo)."""
         case = self._case(case_id)
         region = self._region(case)
+        hops = int(case["hops"])
         if not region.perimeter:
             raise ToolError("NO_PATH", "this case has no perimeter to route late transfers to")
         batch = self.latest_batch() + 1
-        x = "000000:" + _det("L", case_id, batch)[2:].upper().ljust(9, "0")[:9]
-        p = region.perimeter[0]
+        tag = _det("L", case_id, batch)[2:].upper()
+        mids = [f"000000:L{tag[:6]}{i}" for i in range(1, hops)]  # unique per hop and per injection
+        chain = [region.origin, *mids, region.perimeter[0]]
         ts = int(case["alert_ts"]) - 90
-        rows = [{"s": region.origin, "d": x, "amt": 2_500_000, "tid": 900_000_000 + batch * 10},
-                {"s": x, "d": p, "amt": 2_400_000, "tid": 900_000_000 + batch * 10 + 1}]
-        self._write("CREATE (:Batch {id: $b, loaded_at: $now, simulated: true}) "
-                    "MERGE (:Account {id: $x})", {"b": batch, "now": int(time.time()), "x": x})
+        rows = [{"s": a, "d": b, "amt": 2_500_000 - 50_000 * i, "tid": 900_000_000 + batch * 10 + i}
+                for i, (a, b) in enumerate(zip(chain, chain[1:]))]
+        self._write("CREATE (:Batch {id: $b, loaded_at: $now, simulated: true})", {"b": batch, "now": int(time.time())})
+        self._write("UNWIND $ids AS i MERGE (:Account {id: i})", {"ids": mids})
         self._write(
             "UNWIND $rows AS r MATCH (a:Account {id: r.s}), (b:Account {id: r.d}) "
             "CREATE (a)-[:TRANSFER {tid: r.tid, ts: $ts, amt: r.amt, cur: 'US Dollar', fmt: 'ACH', batch: $b}]->(b)",
             {"rows": rows, "ts": ts, "b": batch})
         return {"data_version": batch, "simulated": True, "back_dated_to": fmt_ts(ts),
                 "transfers": [{"from": r["s"], "to": r["d"], "usd_cents": r["amt"]} for r in rows],
-                "note": "synthetic late transfers added for the demo; they create a route that bypasses the plan"}
+                "note": "synthetic late transfers added for the demo; they form a route that bypasses the plan"}
 
     def reset_demo_state(self) -> dict:
         """Remove simulated late data and all saved cases, returning the graph to its loaded state."""

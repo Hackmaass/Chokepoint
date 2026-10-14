@@ -15,7 +15,7 @@ function loadTheme(): string {
 
 function fmtSummary(s: Record<string, any>): string {
   if (!s) return ''
-  if ('accounts' in s && Array.isArray(s.accounts)) return `${s.accounts.length} accounts · ${usd(s.movable_before_usd_cents ?? 0)} movable`
+  if ('accounts' in s && Array.isArray(s.accounts)) return `${s.accounts.length} account${s.accounts.length === 1 ? '' : 's'} · ${usd(s.movable_before_usd_cents ?? 0)} movable`
   if ('max_movable_usd_cents' in s) return usd(s.max_movable_usd_cents)
   if ('verified' in s) return s.verified ? 'verified' : 'not verified'
   return `${s.accounts} accounts · ${s.perimeter_accounts} on the perimeter`

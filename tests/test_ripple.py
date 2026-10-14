@@ -48,11 +48,14 @@ def test_refresh_reruns_affected_findings_and_changes_the_plan(tb):
 
     ref = tb.call("refresh_case", {"case_id": cid})
     assert ref["refreshed"] and ref["findings_rerun"] == 4 and ref["findings_carried_forward"] == 0
-    assert ref["new_transfers_in_scope"] >= 2
+    assert ref["new_transfers_in_scope"] >= 3
     by_kind = {c["kind"]: c for c in ref["changes"]}
     assert by_kind["freeze_plan"]["changed"]
-    new_accounts = by_kind["freeze_plan"]["after"]["accounts"]
+    before_accounts, new_accounts = by_kind["freeze_plan"]["before"]["accounts"], by_kind["freeze_plan"]["after"]["accounts"]
+    assert len(set(inj["transfers"][i]["to"] for i in (0, 1))) == 2  # the simulated chain has distinct accounts
     assert any(a.startswith("000000:") for a in new_accounts)  # the plan now covers the new route
+    assert len(new_accounts) == len(before_accounts) + 1  # one more account is needed to cut the bypass
+    assert by_kind["flow"]["after"]["max_movable_usd_cents"] > by_kind["flow"]["before"]["max_movable_usd_cents"]
     assert by_kind["verification"]["after"]["verified"] is True
 
     after = tb.call("resume_case", {"case_id": cid})
