@@ -87,8 +87,8 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; line-height: 18px;
   padding: 16px; min-height: 0;
 }
 .left { display: grid; grid-template-rows: auto 1fr auto; gap: 12px; min-height: 0; }
-.right { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 16px; min-height: 0; }
-.right > .panel:first-child { max-height: 56vh; overflow: auto; }
+.right { display: flex; flex-direction: column; gap: 16px; min-height: 0; overflow-y: auto; }
+.right > .panel { flex: none; }
 .canvas-wrap { position: relative; min-height: 360px; padding: 0; overflow: hidden; }
 .canvas { position: absolute; inset: 0; }
 .canvas-empty { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; padding: 48px; gap: 8px; }
@@ -137,8 +137,7 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; line-height: 18px;
 .tabs { display: flex; border-bottom: 1px solid var(--line-hairline); margin: 0 -16px 12px; padding: 0 16px; }
 .tabs button { height: 40px; padding: 0 12px; background: none; border: 0; border-bottom: 2px solid transparent; font-weight: 600; cursor: pointer; color: var(--ink-secondary); }
 .tabs button[aria-selected='true'] { border-bottom-color: var(--ink-primary); color: var(--ink-primary); }
-.tabpanel { overflow: auto; min-height: 0; max-height: 100%; }
-.right > .panel:last-child { display: flex; flex-direction: column; min-height: 0; }
+.tabpanel { min-height: 120px; }
 
 .step { border-bottom: 1px solid var(--line-hairline); padding: 8px 0; }
 .step summary { display: flex; gap: 12px; align-items: center; cursor: pointer; min-height: 32px; list-style: none; }
