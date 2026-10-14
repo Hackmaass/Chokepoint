@@ -145,13 +145,16 @@ for ci, comp in enumerate(comps):
         pl_pairs = list(zip(post_legit["s"].to_list(), post_legit["d"].to_list()))
         e_s, e_d, e_n, e_last = (edges[c].to_list() for c in ("s", "d", "n", "last"))
 
-        def score(frozen: set[int]) -> dict:
+        def score(frozen: set[int], onroute: set[int]) -> dict:
             hit_esc = sum(1 for s_, d_ in esc_pairs if s_ in frozen or d_ in frozen)
             return dict(
                 blk_esc=(hit_esc / len(esc_pairs)) if esc_pairs else float("nan"),
                 whole=(hit_esc + origin_touch) / n,
                 coll=sum(1 for s_, d_ in pl_pairs if s_ in frozen or d_ in frozen),
                 prec=(sum(1 for a in frozen if a in laund_accts) / len(frozen)) if frozen else 0.0,
+                innocent=sum(1 for a in frozen if a not in laund_accts),
+                innocent_off=sum(1 for a in frozen if a not in laund_accts and a not in onroute),
+                onroute=(sum(1 for a in frozen if a in onroute) / len(frozen)) if frozen else 0.0,
             )
 
         for K in KS:
@@ -169,6 +172,14 @@ for ci, comp in enumerate(comps):
                 if e_s[i] == origin:
                     hop1_last[e_d[i]] = int(e_last[i])
                     hop1_cnt[e_d[i]] = int(e_n[i])
+            gx = nx.DiGraph(trans)
+            gx.add_node(origin)
+            onroute = (nx.descendants(gx, origin) | {origin})
+            anc = set()
+            for e_ in exits:
+                if e_ in gx:
+                    anc |= nx.ancestors(gx, e_) | {e_}
+            onroute = onroute & anc
             freezable = [a for a in sel if a != origin and a not in exits]
             by_deg = sorted(freezable, key=lambda a: (-deg.get(a, 0), a))
             hop1 = [a for a in freezable if depth[a] == 1]
@@ -198,7 +209,7 @@ for ci, comp in enumerate(comps):
                 row = {**key, "status": "cut", "k": k, "cost": flow.value, "cut_in_hop1": frozen <= set(hop1)}
                 for name, order in (("cp", None), ("deg", by_deg), ("thr", thr_order), ("rec", recent_order), ("cnt", cnt_order)):
                     pick = frozen if order is None else set(order[:k])
-                    for m, v in score(pick).items():
+                    for m, v in score(pick, onroute).items():
                         row[f"{name}_{m}"] = v
                 rows.append(row)
     if (ci + 1) % 15 == 0:

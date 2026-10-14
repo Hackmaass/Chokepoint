@@ -57,3 +57,32 @@ collateral than degree and throughput (8 vs 14-18 at 50%).
   evidence. Supported claims: equal blocking to the best heuristic with higher precision, a guarantee that
   every route to the perimeter is cut (checked independently with `shortestPath` after deleting the frozen
   accounts), and a stored receipt for every result.
+
+## Decision after the test half (recorded 2026-10-15)
+
+The pre-registered rule did not trigger abandonment: Chokepoint ties the strongest baseline (`rec`) on the
+primary metric and beats top-degree. The claim is therefore **reframed**, and no further sweeps are run on
+the spent test half.
+
+Component-clustered bootstrap (4,000 resamples; 124 case-times from 46 test components; K=3, lambda=0),
+Chokepoint minus baseline:
+
+| Metric | vs `rec` (recent recipients) | vs top-degree |
+|---|---|---|
+| blocked share of escaped laundering (primary) | -0.002 [-0.093, +0.084] | +0.049 [+0.013, +0.088] |
+| precision (share of frozen accounts that are laundering accounts; secondary) | **+0.188 [+0.070, +0.317]** | +0.076 [+0.007, +0.146] |
+| collateral (legitimate transfers touched next 3 days; lower is better) | **+4.8 [+1.4, +8.9]** (worse) | -4.6 [-10.6, -0.4] (better) |
+
+Precision was a secondary metric in the evaluation plan; it is reported here because the primary metric
+tied, and it is described as secondary.
+
+Mechanism (descriptive, same cases): every account the plan freezes lies on a route from the alerted
+account to the perimeter (by construction). Only 50% of `rec`'s picks do, and 61% of `rec`'s innocent
+picks (67 of 110) have no route to the perimeter, against 83 innocent picks for the plan in total.
+
+**Claims we make:** blocks as much escaped laundering as the best simple rule of thumb at equal budget;
+freezes fewer innocent accounts (83 vs 110 over the test cases) and only accounts the money can still move
+through; proves no route to the 3-hop perimeter is left (independent `shortestPath` check on a copy of the
+graph); stores a receipt for every result. **Claims we do not make:** that it blocks more than the best
+heuristic, that it freezes fewer legitimate transfers than `rec` (it touches about 5 more per case), or
+that the lambda trade-off curve is rich in this data (plans for lambda >= 0.5 were identical on dev).

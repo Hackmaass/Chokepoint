@@ -30,3 +30,13 @@ components is an optimistic estimate. From here on:
 7. **Late alerts.** Legitimate traffic stops after Sep 10, so collateral is understated for late
    alerts. Cross-fraction comparisons use cases with `t` on or before Sep 7; the count of later
    cases is reported.
+
+## Decisions recorded after the test run
+
+- The lock rule's minimum of 50 dev cases was unreachable on a half-sized dev set and was waived (see
+  `pilot-results.md`).
+- Primary metric tied with `rec`, so the story changed from "finds hidden chokepoints" to "matches the
+  best heuristic, with higher precision, a verified guarantee and receipts". Precision is secondary and
+  is reported with that disclosure and a component-clustered interval.
+- The trade-off curve is not a headline feature (plans were identical for lambda >= 0.5). If shown, it is
+  a sweep over the perimeter K.
