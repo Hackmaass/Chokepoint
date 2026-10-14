@@ -64,15 +64,19 @@ class LLMClient:
                 if wait > 0:
                     time.sleep(wait)
                 self._last = time.time()
-            r = self._client.post(f"{self.s.llm_base_url}/chat/completions", json=body,
-                                  headers={"Authorization": f"Bearer {self.s.llm_api_key}"})
+            try:
+                r = self._client.post(f"{self.s.llm_base_url}/chat/completions", json=body,
+                                      headers={"Authorization": f"Bearer {self.s.llm_api_key}"})
+            except httpx.TransportError:  # timeout, connection reset, DNS: retry with backoff
+                time.sleep(min(30, 3 * 2**attempt))
+                continue
             if r.status_code in (429, 500, 502, 503, 504):
                 time.sleep(min(60, 4 * 2**attempt))
                 continue
             if r.status_code >= 400:
                 raise LLMError(f"LLM HTTP {r.status_code}: {r.text[:200]}")
             return r.json()
-        raise LLMError("LLM unavailable after retries (rate limited or server errors)")
+        raise LLMError("LLM unavailable after retries (rate limited, timeouts or server errors)")
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None) -> ChatResult:
         """One model turn. A reply that is empty, or cut off by the token limit (the model spends part of the

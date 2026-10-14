@@ -93,3 +93,29 @@ def test_stops_after_max_steps():
 def test_llm_failure_is_reported_not_raised():
     run = run_agent("task", FakeToolbox(GOOD), FakeLLM([LLMError("down")]))
     assert run.stopped == "llm_error" and run.events[-1]["type"] == "error"
+
+
+def test_transport_errors_are_retried_then_reported(monkeypatch):
+    import httpx
+
+    from chokepoint.llm import LLMClient, LLMError
+
+    calls = []
+
+    class Boom:
+        def post(self, *a, **k):
+            calls.append(1)
+            raise httpx.ReadTimeout("slow")
+
+    from chokepoint.config import Settings
+
+    settings = Settings("h", 1, None, "http://x", "m", "key", 600)
+    client = LLMClient(settings, mode="off")
+    client._client = Boom()
+    monkeypatch.setattr("chokepoint.llm.time.sleep", lambda s: None)
+    try:
+        client.chat([{"role": "user", "content": "hi"}])
+        raise AssertionError("expected LLMError")
+    except LLMError:
+        pass
+    assert len(calls) == 5

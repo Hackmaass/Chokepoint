@@ -14,7 +14,9 @@ services:
       # TIMEOUT_DEFAULT is short on purpose: algo.maxFlow ignores per-query timeouts and can hang on
       # some node-split networks, so the server-side default is what bounds it (it cancels cleanly).
       FALKORDB_ARGS: "MAX_QUEUED_QUERIES 50 TIMEOUT_MAX 60000 TIMEOUT_DEFAULT 3000 RESULTSET_SIZE 1000000"
-      REDIS_ARGS: "--requirepass ${FALKORDB_PASSWORD:?set FALKORDB_PASSWORD} --appendonly yes"
+      # RDB snapshots are off: the append-only file already persists the data, and a background save blocks
+      # GRAPH.COPY (it needs a fork) for as long as it runs.
+      REDIS_ARGS: "--requirepass ${FALKORDB_PASSWORD:?set FALKORDB_PASSWORD} --appendonly yes --save \"\""
     volumes:
       - falkordb_data:/var/lib/falkordb/data
 

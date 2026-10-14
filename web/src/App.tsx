@@ -3,7 +3,7 @@ import Graph from './Graph'
 import { api, buildCard, STEP_NAMES, usd, usd2, type Card, type CaseRow, type Example, type GraphView, type TraceEvent } from './api'
 
 type Mode = 'live' | 'replay' | 'tools'
-type Tab = 'steps' | 'compare' | 'receipt'
+type Tab = 'steps' | 'compare' | 'receipt' | 'changes'
 
 function loadTheme(): string {
   try {
@@ -11,6 +11,14 @@ function loadTheme(): string {
   } catch {
     return 'system'
   }
+}
+
+function fmtSummary(s: Record<string, any>): string {
+  if (!s) return ''
+  if ('accounts' in s && Array.isArray(s.accounts)) return `${s.accounts.length} accounts · ${usd(s.movable_before_usd_cents ?? 0)} movable`
+  if ('max_movable_usd_cents' in s) return usd(s.max_movable_usd_cents)
+  if ('verified' in s) return s.verified ? 'verified' : 'not verified'
+  return `${s.accounts} accounts · ${s.perimeter_accounts} on the perimeter`
 }
 
 export default function App() {
@@ -29,6 +37,10 @@ export default function App() {
   const [receipt, setReceipt] = useState<Record<string, any> | null>(null)
   const [resumed, setResumed] = useState(false)
   const [resumedCard, setResumedCard] = useState<Card | null>(null)
+  const [info, setInfo] = useState<Record<string, any> | null>(null)
+  const [refresh, setRefresh] = useState<Record<string, any> | null>(null)
+  const [demo, setDemo] = useState(false)
+  const [busy, setBusy] = useState(false)
   const source = useRef<EventSource | null>(null)
 
   useEffect(() => {
@@ -40,6 +52,7 @@ export default function App() {
       }
     }).catch(() => setError('The API is not reachable. Start it with: uv run uvicorn chokepoint.api:app'))
     api.cases().then(setRecent).catch(() => undefined)
+    api.health().then((h) => setDemo(h.demo)).catch(() => undefined)
   }, [])
 
   useEffect(() => {
@@ -63,6 +76,14 @@ export default function App() {
   const caseId = card.case?.case_id
   const planId = card.plan?.plan_id
   const verified = !!card.verification?.verified
+
+  const checkInfo = useCallback((id: string) => {
+    api.tool('resume_case', { case_id: id }).then((r) => setInfo(r.error ? null : r)).catch(() => undefined)
+  }, [])
+
+  useEffect(() => {
+    if (caseId && !running) checkInfo(caseId)
+  }, [caseId, running, checkInfo])
 
   useEffect(() => {
     if (!caseId) return
@@ -149,7 +170,7 @@ export default function App() {
     }
   }
 
-  async function resume(id: string) {
+  async function resume(id: string, goTo: Tab = 'receipt') {
     if (!id) return
     source.current?.close()
     setEvents([])
@@ -178,7 +199,32 @@ export default function App() {
     }
     setResumedCard(buildCard(synth))
     setResumed(true)
-    setTab('receipt')
+    setInfo(r)
+    setTab(goTo)
+  }
+
+  async function simulateLate() {
+    if (!caseId) return
+    setBusy(true)
+    try {
+      await api.post(`/api/demo/late-transfers/${caseId}`)
+      checkInfo(caseId)
+    } catch (e) {
+      setError(String(e).replace(/^Error: /, ''))
+    }
+    setBusy(false)
+  }
+
+  async function rerunAffected() {
+    if (!caseId) return
+    setBusy(true)
+    const r = await api.tool('refresh_case', { case_id: caseId })
+    if (r.error) setError(`${r.error.code}: ${r.error.message}`)
+    else {
+      setRefresh(r)
+      await resume(caseId, 'changes')
+    }
+    setBusy(false)
   }
 
   async function loadReceipt() {
@@ -270,6 +316,9 @@ export default function App() {
             </div>
             <p className="note">
               {card.case ? `Transfers in the ${card.case.window_days} days before the alert · ${card.case.perimeter_hops}-hop perimeter · data version ${card.case.data_version}` : 'Static view of past transfers; it does not know what happens after the alert.'}
+              {demo && caseId && (
+                <button className="btn small" style={{ marginLeft: 16 }} disabled={busy} onClick={simulateLate}>Simulate late transfers</button>
+              )}
               {view && card.plan && (
                 <label style={{ marginLeft: 16 }}>
                   <input type="checkbox" checked={showRule} onChange={(e) => setShowRule(e.target.checked)} /> Show the rule-of-thumb picks
@@ -322,14 +371,23 @@ export default function App() {
                 </span>
               </p>
             )}
-            {resumed && <p className="note">Resumed from a saved case; nothing was recomputed.</p>}
+            {resumed && !refresh && <p className="note">Resumed from a saved case; nothing was recomputed.</p>}
+            {info?.has_newer_data && (
+              <div className="banner" role="note">
+                <span className="ico" aria-hidden>!</span>
+                <span>
+                  Late transfers arrived (data version {info.latest_data_version}). Results saved at version {info.case_data_version} may be out of date.{' '}
+                  <button className="btn small" disabled={busy} onClick={rerunAffected}>Re-run affected findings</button>
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="panel">
             <div className="tabs" role="tablist">
-              {(['steps', 'compare', 'receipt'] as Tab[]).map((t) => (
+              {((refresh ? ['steps', 'compare', 'receipt', 'changes'] : ['steps', 'compare', 'receipt']) as Tab[]).map((t) => (
                 <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
-                  {t === 'steps' ? 'Steps' : t === 'compare' ? 'Compare' : 'Receipt'}
+                  {t === 'steps' ? 'Steps' : t === 'compare' ? 'Compare' : t === 'receipt' ? 'Receipt' : 'Changes'}
                 </button>
               ))}
             </div>
@@ -381,6 +439,25 @@ export default function App() {
                       </table>
                     </>
                   )}
+                </div>
+              )}
+              {tab === 'changes' && refresh && (
+                <div>
+                  <p className="card-line">{refresh.summary}</p>
+                  <p className="note">{refresh.new_transfers_in_scope} new transfer(s) touched accounts these findings had read. Everything else was carried forward without re-running.</p>
+                  <table>
+                    <thead><tr><th>Finding</th><th>Before</th><th>After</th></tr></thead>
+                    <tbody>
+                      {refresh.changes.map((c: any, i: number) => (
+                        <tr key={i}>
+                          <td>{c.kind === 'freeze_plan' ? 'Freeze plan' : c.kind === 'flow' ? 'Money flow' : c.kind === 'region' ? 'Region' : 'Verification'}</td>
+                          <td className="mono">{fmtSummary(c.before)}</td>
+                          <td className="mono">{c.after ? fmtSummary(c.after) : c.note}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="note">Old findings stay in the graph, marked superseded and linked to their replacements.</p>
                 </div>
               )}
               {tab === 'receipt' && (

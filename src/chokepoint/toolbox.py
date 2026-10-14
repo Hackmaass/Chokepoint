@@ -43,6 +43,10 @@ MAX_ACTIONABLE_ACCOUNTS = 25  # a plan larger than this is flagged, not presente
 MAX_CASE_NODES = 4000
 
 
+NO_ROUTE_NOTE = ("no route from the alerted account to the perimeter in this window; widen the window or the "
+                 "perimeter")
+
+
 class ToolError(Exception):
     def __init__(self, code: str, message: str, hint: str = ""):
         super().__init__(message)
@@ -179,7 +183,7 @@ class Toolbox:
     def _cached(self, case_id: str, key: str, dv: int):
         """A finding already recorded for this case, key and data version: (finding_id, tool_call_id, value)."""
         rows = self.g.ro_query(
-            "MATCH (:Case {id: $c})-[:HAS]->(f:Finding {key: $k, data_version: $dv}) "
+            "MATCH (:Case {id: $c})-[:HAS]->(f:Finding {key: $k}) WHERE f.data_version = $dv OR f.checked_dv = $dv "
             "MATCH (tc:ToolCall)-[:PRODUCED]->(f) RETURN f.id, tc.id, f.value ORDER BY f.version DESC LIMIT 1",
             params={"c": case_id, "k": key, "dv": dv}).result_set
         return (rows[0][0], rows[0][1], json.loads(rows[0][2])) if rows else None
@@ -212,6 +216,25 @@ class Toolbox:
         return tc_id, f_id
 
     # ------------------------------------------------------------------ tools
+    def _case_or_none(self, case_id: str) -> dict | None:
+        res = self.g.ro_query("MATCH (c:Case {id: $id}) RETURN c", params={"id": case_id}).result_set
+        return dict(res[0][0].properties) if res else None
+
+    def _region_result(self, case_id: str, case: dict, region: Region, started: float) -> dict:
+        perimeter, trans, _ = self._network_parts(region)
+        plain = nx.DiGraph(list(trans))
+        has_route = bool(perimeter) and region.origin in plain and any(
+            p in plain and nx.has_path(plain, region.origin, p) for p in perimeter)
+        value = {"accounts": len(region.depth), "transfer_pairs": len(trans), "first_hop": len(region.hop1),
+                 "perimeter_accounts": len(perimeter), "has_route_to_perimeter": has_route}
+        tc, f = self._record(
+            case_id, "open_case",
+            {"account": case["origin"], "alert_ts": fmt_ts(int(case["alert_ts"])),
+             "window_days": int(case["window_min"]) // DAY, "perimeter_hops": int(case["hops"])},
+            region, "falkordb-cypher", "region", value, started,
+            [a for a, d in region.depth.items() if d < region.hops])  # scope: accounts whose out-edges were read
+        return {"value": value, "finding_id": f, "tool_call_id": tc}
+
     def tool_open_case(self, account: str, alert_ts: str, window_days: int = DEFAULT_WINDOW_DAYS,
                        perimeter_hops: int = 3) -> dict:
         started = time.perf_counter()
@@ -220,38 +243,27 @@ class Toolbox:
         if not 1 <= int(window_days) <= 14:
             raise ToolError("BAD_ARGUMENT", "window_days must be between 1 and 14")
         t = parse_ts(alert_ts)
-        dv = self.latest_batch()
+        # the same account, time, window and perimeter is the same case in every data version
+        case_id = _det("c", account, t, int(window_days), int(perimeter_hops))
+        case = self._case_or_none(case_id)
+        dv = int(case["data_version"]) if case else self.latest_batch()
+        head = {"case_id": case_id, "alerted_account": account, "alert_ts": fmt_ts(t), "data_version": dv,
+                "window_days": int(window_days), "perimeter_hops": int(perimeter_hops)}
+        if case:
+            known = self._cached(case_id, "region", dv)
+            if known:
+                return {**head, **known[2], "already_open": True,
+                        "note": "" if known[2]["has_route_to_perimeter"] else NO_ROUTE_NOTE}
         region = extract_region(self.g, account, t, int(window_days) * DAY, int(perimeter_hops), dv, MAX_CASE_NODES)
-        case_id = _det("c", account, t, int(window_days), int(perimeter_hops), dv)
-        known = self._cached(case_id, "region", dv)
-        if known:
-            return {"case_id": case_id, "alerted_account": account, "alert_ts": fmt_ts(t), "data_version": dv,
-                    "window_days": int(window_days), "perimeter_hops": int(perimeter_hops), **known[2],
-                    "note": ("no route from the alerted account to the perimeter in this window; widen the "
-                             "window or the perimeter") if not known[2]["has_route_to_perimeter"] else "",
-                    "already_open": True}
-        perimeter, trans, freezable = self._network_parts(region)
-        self._write(
-            "CREATE (:Case {id: $id, origin: $o, alert_ts: $t, window_min: $w, hops: $k, data_version: $dv, "
-            "status: 'open', created_at: $now})",
-            {"id": case_id, "o": account, "t": t, "w": int(window_days) * DAY, "k": int(perimeter_hops),
-             "dv": dv, "now": int(time.time())},
-        )
-        plain = nx.DiGraph(list(trans))
-        has_route = bool(perimeter) and region.origin in plain and any(
-            p in plain and nx.has_path(plain, region.origin, p) for p in perimeter)
-        value = {
-            "accounts": len(region.depth), "transfer_pairs": len(trans), "first_hop": len(region.hop1),
-            "perimeter_accounts": len(perimeter), "has_route_to_perimeter": has_route,
-        }
-        self._record(case_id, "open_case",
-                     {"account": account, "alert_ts": fmt_ts(t), "window_days": int(window_days),
-                      "perimeter_hops": int(perimeter_hops)},
-                     region, "falkordb-cypher", "region", value, started, [])
-        return {"case_id": case_id, "alerted_account": account, "alert_ts": fmt_ts(t), "data_version": dv,
-                "window_days": int(window_days), "perimeter_hops": int(perimeter_hops), **value,
-                "note": ("no route from the alerted account to the perimeter in this window; widen the window "
-                         "or the perimeter") if not has_route else ""}
+        if not case:
+            self._write(
+                "CREATE (:Case {id: $id, origin: $o, alert_ts: $t, window_min: $w, hops: $k, data_version: $dv, "
+                "status: 'open', created_at: $now})",
+                {"id": case_id, "o": account, "t": t, "w": int(window_days) * DAY, "k": int(perimeter_hops),
+                 "dv": dv, "now": int(time.time())})
+            case = self._case(case_id)
+        r = self._region_result(case_id, case, region, started)
+        return {**head, **r["value"], "note": "" if r["value"]["has_route_to_perimeter"] else NO_ROUTE_NOTE}
 
     def tool_flow(self, case_id: str) -> dict:
         started = time.perf_counter()
@@ -372,6 +384,23 @@ class Toolbox:
         case_id, p, f_id, frozen = res[0]
         return {"case_id": case_id, "plan": dict(p.properties), "finding_id": f_id, "frozen": sorted(frozen)}
 
+    def _copy_graph(self, scratch, copy_name: str) -> str:
+        """GRAPH.COPY needs a fork, which the server refuses while a background save or rewrite is running.
+        Retry with backoff; return "GRAPH.COPY" on success, or "rebuild" if the caller must build the copy itself."""
+        for attempt in range(5):
+            try:
+                scratch.copy(copy_name)
+                return "GRAPH.COPY"
+            except Exception as e:  # redis ResponseError: "GRAPH.COPY failed, could not fork"
+                if "fork" not in str(e).lower():
+                    raise
+                try:
+                    self.db.select_graph(copy_name).delete()
+                except Exception:
+                    pass
+                time.sleep(0.3 * 2**attempt)
+        return "rebuild"
+
     def tool_verify_plan(self, plan_id: str) -> dict:
         """Independent check: rebuild the region from the database at the stored data version, delete the
         frozen accounts from a COPY of the scratch graph, and ask whether any route to the perimeter is left."""
@@ -395,9 +424,18 @@ class Toolbox:
             q = ("MATCH (s:A {id: $o}) MATCH (t:A) WHERE t.id IN $perim "
                  "WITH t, shortestPath((s)-[:T*]->(t)) AS p RETURN t.id AS id, p IS NOT NULL AS reachable")
             before = scratch.ro_query(q, params={"o": region.origin, "perim": perimeter}).result_set
-            scratch.copy(copy_name)
+            copy_method = self._copy_graph(scratch, copy_name)
             copy = self.db.select_graph(copy_name)
-            copy.query("MATCH (a:A) WHERE a.id IN $f DELETE a", params={"f": info["frozen"]})
+            if copy_method == "GRAPH.COPY":
+                copy.query("MATCH (a:A) WHERE a.id IN $f DELETE a", params={"f": info["frozen"]})
+            else:  # the server could not fork: build the second graph without the frozen accounts instead
+                frozen = set(info["frozen"])
+                keep = [a for a in region.depth if a not in frozen]
+                copy.query("CREATE INDEX FOR (a:A) ON (a.id)")
+                copy.query("UNWIND $ids AS i CREATE (:A {id: i})", params={"ids": keep})
+                copy.query("UNWIND $rows AS r MATCH (a:A {id: r.s}), (b:A {id: r.d}) CREATE (a)-[:T]->(b)",
+                           params={"rows": [{"s": s_, "d": d_} for (s_, d_) in region.edges
+                                            if s_ not in frozen and d_ not in frozen]})
             after = copy.ro_query(q, params={"o": region.origin, "perim": perimeter}).result_set
         finally:
             for n in (base_name, copy_name):
@@ -417,8 +455,10 @@ class Toolbox:
             "statement": (f"no route from the alerted account to the {hops}-hop perimeter is left after freezing "
                           f"{len(info['frozen'])} account(s)") if verified else
                          ("routes to the perimeter remain" if reachable_after else "no route existed before the freeze"),
-            "method": "rebuilt the region from the database at the stored data version, deleted the frozen "
-                      "accounts from a copy of the graph, ran shortestPath to every perimeter account "
+            "method": "rebuilt the region from the database at the stored data version, " + (
+                "deleted the frozen accounts from a copy of the graph (GRAPH.COPY), " if copy_method == "GRAPH.COPY"
+                else "built a second graph without the frozen accounts, ") +
+                      "ran shortestPath to every perimeter account "
                       "(a consistency check on the same data, not independent evidence about reality)",
         }
         tc, f = self._record(info["case_id"], "verify_plan", {"plan_id": plan_id}, region, "falkordb-shortestPath",
@@ -431,7 +471,7 @@ class Toolbox:
         rows = self.g.ro_query(
             "MATCH (c:Case {id: $id})-[:HAS]->(f:Finding) "
             "OPTIONAL MATCH (f)-[:HAS_PLAN]->(p:FreezePlan) "
-            "RETURN f.id, f.kind, f.status, f.version, f.data_version, f.value, p.id, p.verified "
+            "RETURN f.id, f.kind, f.status, f.version, coalesce(f.checked_dv, f.data_version), f.value, p.id, p.verified "
             "ORDER BY f.version DESC", params={"id": case_id}).result_set
         findings = []
         for fid, kind, status, ver, dv, value, pid, verified in rows:
@@ -531,3 +571,139 @@ class Toolbox:
             "MATCH (c:Case {id: $id}) OPTIONAL MATCH (c)-[:HAS]->(f:Finding) "
             "OPTIONAL MATCH (f)-[:HAS_PLAN]->(p:FreezePlan) OPTIONAL MATCH (tc:ToolCall)-[:RUN_IN]->(c) "
             "DETACH DELETE p, f, tc, c", {"id": case_id})
+
+    # ------------------------------------------------------------------ late data: ripple
+    AFFECTED_QUERY = (
+        "MATCH (:Case {id: $c})-[:HAS]->(f:Finding {status: 'current'}) "
+        "MATCH (tc:ToolCall)-[:PRODUCED]->(f) "
+        "MATCH (tc)-[:READ]->(a:Account)-[t:TRANSFER]-() "
+        "WHERE t.batch > coalesce(f.checked_dv, f.data_version) AND t.batch <= $latest AND t.ts <= $t_to "
+        "RETURN f.id AS id, count(t) AS n"
+    )
+
+    @staticmethod
+    def _summary(kind: str, value: dict) -> dict:
+        if kind == "region":
+            return {k: value[k] for k in ("accounts", "transfer_pairs", "first_hop", "perimeter_accounts",
+                                          "has_route_to_perimeter")}
+        if kind == "flow":
+            return {"max_movable_usd_cents": value["max_movable_usd_cents"]}
+        if kind == "freeze_plan":
+            return {"accounts": value["chokepoint_plan"]["accounts"], "cost": value["chokepoint_plan"]["cost"],
+                    "movable_before_usd_cents": value["money_movable_before_usd_cents"],
+                    "actionable": value["actionable"]}
+        return {"verified": value.get("verified"), "perimeter_reachable_after": value.get("perimeter_reachable_after")}
+
+    def _supersede(self, old_id: str, new_id: str) -> None:
+        self._write("MATCH (o:Finding {id: $o}), (n:Finding {id: $n}) SET o.status = 'superseded' "
+                    "CREATE (o)-[:SUPERSEDED_BY]->(n)", {"o": old_id, "n": new_id})
+
+    def tool_refresh_case(self, case_id: str) -> dict:
+        """Late or back-dated transfers arrived: find the findings whose inputs they touched (through the READ
+        scope edges), re-run only those, supersede the old ones, and carry the rest forward unchanged."""
+        started = time.perf_counter()
+        case = self._case(case_id)
+        latest = self.latest_batch()
+        rows = self.g.ro_query(
+            "MATCH (:Case {id: $c})-[:HAS]->(f:Finding {status: 'current'}) "
+            "RETURN f.id, f.kind, f.key, coalesce(f.checked_dv, f.data_version), f.value ORDER BY f.version",
+            params={"c": case_id}).result_set
+        cur = [{"id": i, "kind": k, "key": key, "checked": int(c), "value": json.loads(v)} for i, k, key, c, v in rows]
+        if not cur or all(f["checked"] >= latest for f in cur):
+            return {"case_id": case_id, "refreshed": False, "latest_data_version": latest,
+                    "message": "no newer data than this case's findings; nothing to re-run"}
+        t_to = int(case["alert_ts"])
+        hits = {r[0]: int(r[1]) for r in self.g.ro_query(
+            self.AFFECTED_QUERY, params={"c": case_id, "latest": latest, "t_to": t_to}).result_set}
+        plan_of = {pid: fid for fid, pid in self.g.ro_query(
+            "MATCH (:Case {id: $c})-[:HAS]->(f:Finding {status: 'current'})-[:HAS_PLAN]->(p:FreezePlan) "
+            "RETURN f.id, p.id", params={"c": case_id}).result_set}
+        affected = set(hits)
+        for f in cur:  # a verification is only as current as the plan it checks
+            if f["kind"] == "verification" and plan_of.get(f["key"].split(":", 1)[1]) in affected:
+                affected.add(f["id"])
+        carried = [f for f in cur if f["id"] not in affected]
+        if carried:
+            self._write("MATCH (f:Finding) WHERE f.id IN $ids SET f.checked_dv = $v",
+                        {"ids": [f["id"] for f in carried], "v": latest})
+        self._write("MATCH (c:Case {id: $c}) SET c.data_version = $v, c.refreshed_at = $now",
+                    {"c": case_id, "v": latest, "now": int(time.time())})
+        case = self._case(case_id)
+        changes: list[dict] = []
+        new_plan_id = None
+        old_to_new_plan: dict[str, str] = {}
+
+        def log(old: dict, new_value: dict | None, new_id: str | None, note: str = "") -> None:
+            before = self._summary(old["kind"], old["value"])
+            after = self._summary(old["kind"], new_value) if new_value else None
+            changes.append({"kind": old["kind"], "before": before, "after": after, "changed": before != after,
+                            "note": note})
+            if new_id:
+                self._supersede(old["id"], new_id)
+
+        for f in (x for x in cur if x["id"] in affected and x["kind"] == "region"):
+            region = self._region(case)
+            r = self._region_result(case_id, case, region, started)
+            log(f, r["value"], r["finding_id"])
+        for f in (x for x in cur if x["id"] in affected and x["kind"] == "flow"):
+            r = self.tool_flow(case_id)
+            log(f, {"max_movable_usd_cents": r["max_movable_usd_cents"]}, r["finding_id"])
+        for f in (x for x in cur if x["id"] in affected and x["kind"] == "freeze_plan"):
+            _, lam, hops = f["key"].split(":")
+            try:
+                r = self.tool_freeze_plan(case_id, float(lam), int(hops))
+            except (NoPath, NoFiniteCut) as e:
+                log(f, None, None, f"no plan any more: {e}")
+                self._write("MATCH (o:Finding {id: $o}) SET o.status = 'superseded'", {"o": f["id"]})
+                continue
+            old_pid = next((p for p, fid in plan_of.items() if fid == f["id"]), None)
+            if old_pid:
+                old_to_new_plan[old_pid] = r["plan_id"]
+            new_plan_id = r["plan_id"]
+            log(f, {k: r[k] for k in r if k not in ("plan_id", "finding_id", "tool_call_id")}, r["finding_id"])
+        for f in (x for x in cur if x["id"] in affected and x["kind"] == "verification"):
+            old_pid = f["key"].split(":", 1)[1]
+            if old_pid in old_to_new_plan:
+                r = self.tool_verify_plan(old_to_new_plan[old_pid])
+                log(f, {k: r[k] for k in ("verified", "perimeter_reachable_after")}, r["finding_id"])
+            else:
+                self._write("MATCH (o:Finding {id: $o}) SET o.status = 'superseded'", {"o": f["id"]})
+        return {
+            "case_id": case_id, "refreshed": True, "from_data_version": min(f["checked"] for f in cur),
+            "to_data_version": latest, "findings_checked": len(cur), "findings_rerun": len(affected),
+            "findings_carried_forward": len(carried), "new_transfers_in_scope": sum(hits.values()),
+            "changes": changes, "new_plan_id": new_plan_id,
+            "summary": (f"{len(affected)} of {len(cur)} findings used accounts that received new transfers and were "
+                        f"re-run; {len(carried)} were unaffected and carried forward"),
+        }
+
+    # Demo support: simulate late, back-dated transfers (synthetic, clearly labelled) and reset the demo state.
+    def inject_late_transfers(self, case_id: str) -> dict:
+        case = self._case(case_id)
+        region = self._region(case)
+        if not region.perimeter:
+            raise ToolError("NO_PATH", "this case has no perimeter to route late transfers to")
+        batch = self.latest_batch() + 1
+        x = "000000:" + _det("L", case_id, batch)[2:].upper().ljust(9, "0")[:9]
+        p = region.perimeter[0]
+        ts = int(case["alert_ts"]) - 90
+        rows = [{"s": region.origin, "d": x, "amt": 2_500_000, "tid": 900_000_000 + batch * 10},
+                {"s": x, "d": p, "amt": 2_400_000, "tid": 900_000_000 + batch * 10 + 1}]
+        self._write("CREATE (:Batch {id: $b, loaded_at: $now, simulated: true}) "
+                    "MERGE (:Account {id: $x})", {"b": batch, "now": int(time.time()), "x": x})
+        self._write(
+            "UNWIND $rows AS r MATCH (a:Account {id: r.s}), (b:Account {id: r.d}) "
+            "CREATE (a)-[:TRANSFER {tid: r.tid, ts: $ts, amt: r.amt, cur: 'US Dollar', fmt: 'ACH', batch: $b}]->(b)",
+            {"rows": rows, "ts": ts, "b": batch})
+        return {"data_version": batch, "simulated": True, "back_dated_to": fmt_ts(ts),
+                "transfers": [{"from": r["s"], "to": r["d"], "usd_cents": r["amt"]} for r in rows],
+                "note": "synthetic late transfers added for the demo; they create a route that bypasses the plan"}
+
+    def reset_demo_state(self) -> dict:
+        """Remove simulated late data and all saved cases, returning the graph to its loaded state."""
+        self._write("MATCH ()-[t:TRANSFER]->() WHERE t.batch > 0 DELETE t", {})
+        self._write("MATCH (a:Account) WHERE a.id STARTS WITH '000000:' DETACH DELETE a", {})
+        self._write("MATCH (b:Batch) WHERE b.id > 0 DELETE b", {})
+        self._write("MATCH (c:Case) OPTIONAL MATCH (c)-[:HAS]->(f:Finding) OPTIONAL MATCH (f)-[:HAS_PLAN]->(p:FreezePlan) "
+                    "OPTIONAL MATCH (tc:ToolCall)-[:RUN_IN]->(c) DETACH DELETE p, f, tc, c", {})
+        return {"reset": True, "latest_data_version": self.latest_batch()}

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import threading
 import time
 import uuid
@@ -32,7 +33,8 @@ from .toolbox import Toolbox
 
 EXAMPLES = PROJECT_ROOT / "examples" / "examples.json"
 MAX_CONCURRENT_RUNS = 2
-TOOLS = {"open_case", "flow", "freeze_plan", "verify_plan", "resume_case", "explain_finding"}
+TOOLS = {"open_case", "flow", "freeze_plan", "verify_plan", "resume_case", "explain_finding", "refresh_case"}
+DEMO = os.environ.get("DEMO_MODE", "1") != "0"  # simulated late transfers and reset (synthetic edits only)
 
 app = FastAPI(title="Chokepoint", version="0.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -57,7 +59,7 @@ class RunRequest(BaseModel):
 @app.get("/api/health")
 def health() -> dict:
     tb = toolbox()
-    return {"ok": True, "latest_data_version": tb.latest_batch()}
+    return {"ok": True, "latest_data_version": tb.latest_batch(), "demo": DEMO}
 
 
 @app.get("/api/examples")
@@ -70,6 +72,24 @@ def call_tool(tool: str, args: dict) -> dict:
     if tool not in TOOLS:
         raise HTTPException(404, "unknown tool")
     return toolbox().call(tool, args)
+
+
+@app.post("/api/demo/late-transfers/{case_id}")
+def demo_late_transfers(case_id: str) -> dict:
+    """Simulate late, back-dated transfers for a case (synthetic; creates a route that bypasses the plan)."""
+    if not DEMO:
+        raise HTTPException(403, "demo mode is off")
+    try:
+        return toolbox().inject_late_transfers(case_id)
+    except Exception as e:
+        raise HTTPException(400, getattr(e, "message", str(e)))
+
+
+@app.post("/api/demo/reset")
+def demo_reset() -> dict:
+    if not DEMO:
+        raise HTTPException(403, "demo mode is off")
+    return toolbox().reset_demo_state()
 
 
 @app.get("/api/cases")

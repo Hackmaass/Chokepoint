@@ -44,6 +44,11 @@ TOOL_SPECS = [
      "description": "Reload a case and its stored findings from an earlier session, and say whether newer data exists.",
      "parameters": {"type": "object", "required": ["case_id"], "additionalProperties": False,
                     "properties": {"case_id": {"type": "string"}}}},
+    {"name": "refresh_case",
+     "description": "After newer data has arrived (resume_case says has_newer_data), find which saved findings used "
+                    "accounts that received new transfers, re-run only those, and report before and after.",
+     "parameters": {"type": "object", "required": ["case_id"], "additionalProperties": False,
+                    "properties": {"case_id": {"type": "string"}}}},
     {"name": "explain_finding",
      "description": "Show the receipt behind a finding: which tool run, parameters, data version and solver produced it.",
      "parameters": {"type": "object", "required": ["finding_id"], "additionalProperties": False,
@@ -57,7 +62,8 @@ accounts to freeze so the money cannot keep moving, and to show your work.
 Rules:
 1. Use the tools. Never state a number, account id or case id that did not come from a tool result.
 2. Normal workflow: open_case, then flow, then freeze_plan, then verify_plan. For a case id the user already has, \
-call resume_case first and decide whether anything is stale.
+call resume_case first; if has_newer_data is true, call refresh_case and report what changed, including \
+whether the recommended plan changed and whether it is still verified.
 3. If open_case reports no route to the perimeter, or freeze_plan returns NO_PATH, widen window_days (up to 14) or \
 perimeter_hops (up to 4), open a new case, and say what you changed and why. Stop after two widenings and say so.
 4. If freeze_plan says actionable is false, do not recommend it: try perimeter_hops 2 or a shorter window, or say \
@@ -140,8 +146,8 @@ def run_agent(task: str, toolbox: Toolbox, llm: LLMClient, max_steps: int = 10,
             run.results.append((name, args or {}, result))
             emit({"type": "tool_result", "step": step, "tool": name, "ms": ms, "ok": "error" not in result,
                   "summary": summarize(result), "result": result})
-            model_view = {k: v for k, v in result.items() if k not in ("finding_id", "tool_call_id", "already_computed", "already_open")}
-            messages.append({"role": "tool", "tool_call_id": c["id"], "content": json.dumps(model_view)[:12000]})
+            model_view = {k: v for k, v in result.items() if k not in ("finding_id", "tool_call_id", "already_computed", "already_open", "data_version")}
+            messages.append({"role": "tool", "tool_call_id": c["id"], "content": json.dumps(model_view, sort_keys=True)[:12000]})
     run.stopped = "max_steps"
     emit({"type": "error", "message": f"stopped after {max_steps} steps without a final answer"})
     return run

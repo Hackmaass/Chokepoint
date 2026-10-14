@@ -81,6 +81,12 @@ def resume_case(case_id: str) -> dict:
 
 
 @mcp.tool
+def refresh_case(case_id: str) -> dict:
+    """After newer data arrived: re-run only the findings that used accounts with new transfers, and report what changed."""
+    return tb().call("refresh_case", {"case_id": case_id})
+
+
+@mcp.tool
 def explain_finding(finding_id: str) -> dict:
     """The receipt behind a finding: which tool run, parameters, data version and solver produced it."""
     return tb().call("explain_finding", {"finding_id": finding_id})

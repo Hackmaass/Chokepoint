@@ -92,6 +92,8 @@ async function j<T>(r: Response): Promise<T> {
 }
 
 export const api = {
+  health: () => fetch('/api/health').then((r) => j<{ ok: boolean; latest_data_version: number; demo: boolean }>(r)),
+  post: (path: string) => fetch(path, { method: 'POST' }).then((r) => j<Record<string, any>>(r)),
   examples: () => fetch('/api/examples').then((r) => j<Example[]>(r)),
   cases: () => fetch('/api/cases').then((r) => j<CaseRow[]>(r)),
   tool: (tool: string, args: Record<string, unknown>) =>
@@ -117,6 +119,7 @@ export const STEP_NAMES: Record<string, string> = {
   verify_plan: 'Verified plan',
   resume_case: 'Resumed case',
   explain_finding: 'Read receipt',
+  refresh_case: 'Re-ran affected findings',
 }
 
 /** Mirrors the server's answer_card: numbers come from tool results only. */
