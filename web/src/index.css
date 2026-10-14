@@ -87,7 +87,8 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; line-height: 18px;
   padding: 16px; min-height: 0;
 }
 .left { display: grid; grid-template-rows: auto 1fr auto; gap: 12px; min-height: 0; }
-.right { display: grid; grid-template-rows: auto 1fr; gap: 16px; min-height: 0; }
+.right { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 16px; min-height: 0; }
+.right > .panel:first-child { max-height: 56vh; overflow: auto; }
 .canvas-wrap { position: relative; min-height: 360px; padding: 0; overflow: hidden; }
 .canvas { position: absolute; inset: 0; }
 .canvas-empty { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; padding: 48px; gap: 8px; }
