@@ -70,6 +70,7 @@ export type TraceEvent = {
   cached_calls?: number
   mode?: string
   stopped?: string
+  faithful?: { unmatched_amounts: string[]; unmatched_accounts: string[]; faithful: boolean }
 }
 
 export type GraphView = {

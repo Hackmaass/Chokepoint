@@ -73,6 +73,7 @@ export default function App() {
   )
   const card: Card = useMemo(() => (resumedCard && events.length === 0 ? resumedCard : buildCard(results)), [results, resumedCard, events.length])
   const finalText = events.find((e) => e.type === 'final')?.text
+  const unmatched = events.find((e) => e.type === 'final')?.faithful
   const cachedRun = events.some((e) => e.cached) || events.find((e) => e.type === 'card')?.mode === 'replay'
   const caseId = card.case?.case_id
   const planId = card.plan?.plan_id
@@ -400,6 +401,9 @@ export default function App() {
             {finalText && (
               <p className="narrative">
                 {finalText}
+                {unmatched && !unmatched.faithful && (
+                  <span className="banner" role="note"><span className="ico" aria-hidden>!</span><span>This summary mentions a figure that no tool returned ({[...unmatched.unmatched_amounts, ...unmatched.unmatched_accounts].join(', ')}). Rely on the cards and tables, not the text.</span></span>
+                )}
                 <span className="note" style={{ display: 'block' }}>
                   {cachedRun ? 'Replay: this is a saved run, not a live response. ' : ''}The model writes the words; every number comes from the tools.
                 </span>

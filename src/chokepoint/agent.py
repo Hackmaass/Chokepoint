@@ -8,6 +8,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from .faithful import check as check_faithful
 from .llm import LLMClient, LLMError
 from .toolbox import Toolbox
 
@@ -117,6 +118,7 @@ class AgentRun:
     steps: int = 0
     cached_calls: int = 0
     stopped: str = ""  # "", "max_steps", "llm_error"
+    faithful: dict = field(default_factory=dict)  # figures in the narrative that no tool returned
 
 
 def summarize(result: dict) -> str:
@@ -167,7 +169,8 @@ def run_agent(task: str, toolbox: Toolbox, llm: LLMClient, max_steps: int = 10,
         text = (msg.get("content") or "").strip()
         if not calls:
             run.final_text = text
-            emit({"type": "final", "text": text, "cached": res.cached})
+            run.faithful = check_faithful(text, [(a, r) for _, a, r in run.results])
+            emit({"type": "final", "text": text, "cached": res.cached, "faithful": run.faithful})
             return run
         messages.append({"role": "assistant", "content": msg.get("content") or "", "tool_calls": calls})
         if text:

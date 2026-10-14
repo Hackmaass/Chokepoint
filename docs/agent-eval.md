@@ -51,4 +51,20 @@ What the evaluation found and what was changed:
 
 ## Unseen half of the patterns
 
-_Filled in after `scripts/eval_agent.py --split dev` finishes (see below)._
+The same code and prompts, run once on the other half of the patterns (60 cases: 48 with a route, 12 without), which none of the
+fixes above were developed on. Both halves are scored with the shared checker `src/chokepoint/faithful.py`.
+
+| Half | Completed | Workflow | Verified when actionable | Non-actionable declined | Faithful | Recommends unverified / with no route |
+|---|---|---|---|---|---|---|
+| fixes developed on this half | 60/60 | 60/60 | 40/40 | 5/5 | 60/60 | 0 / 0 |
+| unseen half | 60/60 | 60/60 | 41/41 | 7/7 | **59/60** | 0 / 0 |
+
+The one unfaithful answer states "$919,425.02" as the money that could reach the perimeter; no tool returned that figure (the
+closest returned values are $746,584.48 and $966,210.57), so it is a model transcription error, not a rounding. An earlier version
+of the checker also flagged "$32,923" (a truncation of the tool's $32,923.62) and "$18 M" (a rounding of $18.3 million); those are
+accepted now (whole dollars, and 5% for amounts written with a suffix).
+
+**What the product does about it:** the agent now runs the same check on every final answer and the interface shows a warning
+("This summary mentions a figure that no tool returned") with the offending figures, and the numbers on the cards and tables
+always come from tools. So the sentence "every number on a card comes from a tool" is true by construction; for the narrative it is
+checked, and an unmatched figure is flagged to the user rather than silently shown.

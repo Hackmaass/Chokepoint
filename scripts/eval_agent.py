@@ -23,6 +23,7 @@ from chokepoint.agent import run_agent
 from chokepoint.cases import make_cases
 from chokepoint.data_ibm import load_transactions
 from chokepoint.db import connect
+from chokepoint.faithful import check as check_faithful
 from chokepoint.llm import LLMClient
 from chokepoint.toolbox import Toolbox, fmt_ts
 
@@ -34,51 +35,16 @@ ap.add_argument("--workers", type=int, default=3)
 ap.add_argument("--out", default="scratch/agent_eval.json")
 args = ap.parse_args()
 
-AMOUNT = re.compile(r"\$\s?([\d,]+(?:\.\d+)?)\s*(million|billion|thousand|bn|m|k)?\b", re.I)
-SCALE = {"million": 1e6, "m": 1e6, "billion": 1e9, "bn": 1e9, "thousand": 1e3, "k": 1e3}
 ACCOUNT = re.compile(r"\b[0-9]{2,7}:[0-9A-F]{9}\b")
-
-
-def numbers_in(obj, out: set):
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            if "usd_cents" in k and isinstance(v, (int, float)):
-                out.add(round(v / 100, 2))
-                out.add(float(round(v / 100)))
-            numbers_in(v, out)
-    elif isinstance(obj, list):
-        for v in obj:
-            numbers_in(v, out)
-
-
-def accounts_in(obj, out: set):
-    if isinstance(obj, str):
-        out.update(ACCOUNT.findall(obj))
-    elif isinstance(obj, dict):
-        for v in obj.values():
-            accounts_in(v, out)
-    elif isinstance(obj, list):
-        for v in obj:
-            accounts_in(v, out)
 
 
 def evaluate(case, tb, llm) -> dict:
     task = f"Account {case.origin} was alerted at {fmt_ts(case.alert_ts)}. Investigate and recommend which accounts to freeze."
     run = run_agent(task, tb, llm)
     tools = [t for t, _, _ in run.results]
-    amounts, accts = set(), {case.origin}
-    for _, a, r in run.results:
-        numbers_in(r, amounts)
-        accounts_in(r, accts)
-        accounts_in(a, accts)
     text = run.final_text or ""
-    bad_amounts = []
-    for m, suffix in AMOUNT.findall(text):
-        v = float(m.replace(",", "")) * SCALE.get(suffix.lower(), 1)
-        tol = 0.011 if not suffix else 0.01 * v  # "$33.2 million" is a rounding of a tool value
-        if v != 0 and not any(abs(v - a) <= tol for a in amounts):
-            bad_amounts.append(m + (" " + suffix if suffix else ""))
-    bad_accounts = [a for a in set(ACCOUNT.findall(text)) if a not in accts]
+    f = check_faithful(text, [(a, r) for _, a, r in run.results], {case.origin})
+    bad_amounts, bad_accounts = f["unmatched_amounts"], f["unmatched_accounts"]
     results = {t: r for t, _, r in run.results}
     opened = [r for t, _, r in run.results if t == "open_case" and "error" not in r]
     has_route = any(r.get("has_route_to_perimeter") for r in opened)
