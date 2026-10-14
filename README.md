@@ -45,6 +45,11 @@ Live-agent evaluation on 120 cases from both halves of the patterns (details, an
 - **119/120 narratives stated only figures and account ids that a tool returned.** The one miss mis-transcribed a dollar amount; the interface now runs this check on every answer and flags such a figure to the user. Numbers on the cards come only from tools.
 - The first run was worse (8 runs looped on high-volume hub accounts until the step limit) and exposed a half-written-result bug; both were fixed and tested. Those fixes were developed on the first 60 cases, so the second 60 (unseen by them) are the fairer estimate; they are nearly identical.
 
+### Late data and a second agent
+
+- **Late or back-dated transfers** (`refresh_case`): each saved finding is linked to the accounts its tool run read, so one traversal finds the findings a new transfer touches; only those are re-run, old ones are marked superseded and linked to their replacements, the rest are carried forward. On 40 held-out cases with four kinds of late batch, the refreshed answers equalled a full recomputation in **40/40**, the scope rule **missed no change**, and it re-ran 50% of the findings (savings come from late data that does not touch the case; touched cases re-run everything, half of which was unchanged). [`docs/ripple-eval.md`](docs/ripple-eval.md)
+- **An auditor agent** shares state with the investigator only through the graph: it reads the stored case and plan, runs deterministic checks, and records a verdict as a finding that appears when the case is resumed. Code refuses an "agree" while a blocking check (verified, current, actionable, no routes left) fails.
+
 ## Why FalkorDB
 
 | Role | How the graph is used |
