@@ -1,0 +1,12 @@
+.git
+.venv
+**/node_modules
+web/dist
+data
+scratch
+llm_cache
+.env
+.pytest_cache
+.ruff_cache
+.hypothesis
+STATUS.md

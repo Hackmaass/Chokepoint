@@ -21,6 +21,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .agent import answer_card, run_agent
@@ -136,3 +137,9 @@ async def run_events(run_id: str):
 
     return StreamingResponse(stream(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# Serve the built web app (npm run build) from the same process, after every API route is registered.
+_DIST = PROJECT_ROOT / "web" / "dist"
+if _DIST.exists():
+    app.mount("/", StaticFiles(directory=_DIST, html=True), name="web")

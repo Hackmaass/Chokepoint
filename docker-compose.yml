@@ -18,5 +18,36 @@ services:
     volumes:
       - falkordb_data:/var/lib/falkordb/data
 
+  # The app (API + built web UI). Start with:  docker compose --profile app up -d --build
+  api:
+    profiles: ["app"]
+    build: .
+    container_name: chokepoint-api
+    restart: unless-stopped
+    depends_on: [falkordb]
+    environment:
+      FALKORDB_HOST: falkordb
+      FALKORDB_PORT: "6379"
+      FALKORDB_PASSWORD: ${FALKORDB_PASSWORD:?set FALKORDB_PASSWORD}
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+      LLM_RPM_LIMIT: ${LLM_RPM_LIMIT:-30}
+    ports:
+      - "127.0.0.1:8080:8000"   # put a TLS reverse proxy (Caddy, nginx) in front for a public deployment
+
+  # One-off data load:  docker compose --profile seed run --rm seed
+  seed:
+    profiles: ["seed"]
+    build: .
+    depends_on: [falkordb]
+    environment:
+      FALKORDB_HOST: falkordb
+      FALKORDB_PORT: "6379"
+      FALKORDB_PASSWORD: ${FALKORDB_PASSWORD:?set FALKORDB_PASSWORD}
+    volumes:
+      - dataset:/app/data
+    working_dir: /app
+    command: ["sh", "-c", "python scripts/download_data.py && python scripts/load_ibm.py"]
+
 volumes:
   falkordb_data:
+  dataset:
