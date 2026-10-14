@@ -20,7 +20,8 @@ import httpx
 
 from .config import PROJECT_ROOT, Settings, get_settings
 
-CACHE_DIR = PROJECT_ROOT / "llm_cache"
+CACHE_DIR = PROJECT_ROOT / "llm_cache"  # live runs (git-ignored)
+REPLAY_DIR = PROJECT_ROOT / "replays"  # saved demo runs (committed)
 
 
 class LLMError(Exception):
@@ -39,12 +40,12 @@ class ChatResult:
 
 
 class LLMClient:
-    def __init__(self, settings: Settings | None = None, mode: str = "live", cache_dir: Path = CACHE_DIR,
+    def __init__(self, settings: Settings | None = None, mode: str = "live", cache_dir: Path | None = None,
                  temperature: float = 1.0, top_p: float = 0.95, max_tokens: int = 4096):
         self.s = settings or get_settings()
         if mode not in ("live", "replay", "off"):
             raise ValueError("mode must be live, replay or off")
-        self.mode, self.cache_dir = mode, cache_dir
+        self.mode, self.cache_dir = mode, cache_dir or CACHE_DIR
         self.temperature, self.top_p, self.max_tokens = temperature, top_p, max_tokens
         self._lock = threading.Lock()
         self._last = 0.0

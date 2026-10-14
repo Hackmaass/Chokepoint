@@ -1,4 +1,4 @@
-﻿"""Pick example alerts for the demo screen (and delete the trial cases it creates).
+"""Pick example alerts for the demo screen (and delete the trial cases it creates).
 
 Selection uses laundering labels (case selection only, disclosed in the README): the origin of a laundering
 pattern and an alert part-way through it. Examples must be readable (small region), have a route, an actionable

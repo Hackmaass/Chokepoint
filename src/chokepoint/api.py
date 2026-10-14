@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field
 from .agent import answer_card, run_agent
 from .config import PROJECT_ROOT
 from .db import connect
-from .llm import LLMClient
+from .llm import REPLAY_DIR, LLMClient
 from .toolbox import Toolbox
 
 EXAMPLES = PROJECT_ROOT / "examples" / "examples.json"
@@ -93,7 +93,7 @@ def graph(case_id: str, plan_id: str | None = None) -> dict:
 def _execute(run_id: str, req: RunRequest) -> None:
     st = _runs[run_id]
     try:
-        llm = LLMClient(mode=req.mode)
+        llm = LLMClient(mode=req.mode, cache_dir=REPLAY_DIR if req.mode == "replay" else None)
         run = run_agent(req.task, toolbox(), llm, on_event=lambda ev: st["events"].append(ev))
         st["events"].append({"type": "card", "card": answer_card(run), "stopped": run.stopped,
                              "cached_calls": run.cached_calls, "mode": req.mode, "t": time.time()})

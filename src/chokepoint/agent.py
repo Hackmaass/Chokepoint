@@ -140,7 +140,7 @@ def run_agent(task: str, toolbox: Toolbox, llm: LLMClient, max_steps: int = 10,
             run.results.append((name, args or {}, result))
             emit({"type": "tool_result", "step": step, "tool": name, "ms": ms, "ok": "error" not in result,
                   "summary": summarize(result), "result": result})
-            model_view = {k: v for k, v in result.items() if k not in ("finding_id", "tool_call_id", "already_computed")}
+            model_view = {k: v for k, v in result.items() if k not in ("finding_id", "tool_call_id", "already_computed", "already_open")}
             messages.append({"role": "tool", "tool_call_id": c["id"], "content": json.dumps(model_view)[:12000]})
     run.stopped = "max_steps"
     emit({"type": "error", "message": f"stopped after {max_steps} steps without a final answer"})
