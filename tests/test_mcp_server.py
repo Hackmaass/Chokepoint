@@ -21,6 +21,10 @@ def _payload(res):
 
 
 def test_tools_are_listed_and_work_through_mcp():
+    from chokepoint.db import connect
+
+    if "tenant_ibm" not in connect().list_graphs():
+        pytest.skip("tenant_ibm not loaded")
     example = json.loads((PROJECT_ROOT / "examples" / "examples.json").read_text(encoding="utf-8"))[3]
 
     async def go():
