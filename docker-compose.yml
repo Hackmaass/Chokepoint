@@ -33,6 +33,7 @@ services:
       FALKORDB_PASSWORD: ${FALKORDB_PASSWORD:?set FALKORDB_PASSWORD}
       NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
       LLM_RPM_LIMIT: ${LLM_RPM_LIMIT:-30}
+      DEMO_MODE: ${DEMO_MODE:-1}   # set 0 on a public host: the demo endpoints edit the graph
     ports:
       - "127.0.0.1:8080:8000"   # put a TLS reverse proxy (Caddy, nginx) in front for a public deployment
 

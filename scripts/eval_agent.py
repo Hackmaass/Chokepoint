@@ -34,7 +34,8 @@ ap.add_argument("--workers", type=int, default=3)
 ap.add_argument("--out", default="scratch/agent_eval.json")
 args = ap.parse_args()
 
-AMOUNT = re.compile(r"\$\s?([\d,]+(?:\.\d+)?)")
+AMOUNT = re.compile(r"\$\s?([\d,]+(?:\.\d+)?)\s*(million|billion|thousand|bn|m|k)?\b", re.I)
+SCALE = {"million": 1e6, "m": 1e6, "billion": 1e9, "bn": 1e9, "thousand": 1e3, "k": 1e3}
 ACCOUNT = re.compile(r"\b[0-9]{2,7}:[0-9A-F]{9}\b")
 
 
@@ -72,15 +73,17 @@ def evaluate(case, tb, llm) -> dict:
         accounts_in(a, accts)
     text = run.final_text or ""
     bad_amounts = []
-    for m in AMOUNT.findall(text):
-        v = float(m.replace(",", ""))
-        if not any(abs(v - a) < 0.011 for a in amounts) and v != 0:
-            bad_amounts.append(m)
+    for m, suffix in AMOUNT.findall(text):
+        v = float(m.replace(",", "")) * SCALE.get(suffix.lower(), 1)
+        tol = 0.011 if not suffix else 0.01 * v  # "$33.2 million" is a rounding of a tool value
+        if v != 0 and not any(abs(v - a) <= tol for a in amounts):
+            bad_amounts.append(m + (" " + suffix if suffix else ""))
     bad_accounts = [a for a in set(ACCOUNT.findall(text)) if a not in accts]
     results = {t: r for t, _, r in run.results}
     opened = [r for t, _, r in run.results if t == "open_case" and "error" not in r]
     has_route = any(r.get("has_route_to_perimeter") for r in opened)
     verified = any(t == "verify_plan" and r.get("verified") for t, _, r in run.results)
+    actionable = any(t == "freeze_plan" and r.get("actionable") for t, _, r in run.results)
     workflow_ok = bool(tools) and tools[0] == "open_case" and all(
         (t == "open_case") or any(u == "open_case" for u in tools[:i]) for i, t in enumerate(tools))
     others = [a for a in set(ACCOUNT.findall(text)) if a != case.origin]  # accounts named other than the alerted one
@@ -88,7 +91,7 @@ def evaluate(case, tb, llm) -> dict:
     widenings = sum(1 for t, a, _ in run.results if t == "open_case" and (a.get("window_days", 7) > 7 or a.get("perimeter_hops", 3) > 3))
     return {
         "origin": case.origin, "alert_ts": fmt_ts(case.alert_ts), "steps": run.steps, "tools": tools,
-        "has_route": has_route, "completed": bool(text) and not run.stopped, "stopped": run.stopped,
+        "has_route": has_route, "actionable": actionable, "completed": bool(text) and not run.stopped, "stopped": run.stopped,
         "workflow_ok": workflow_ok, "verified": verified,
         "recommends_without_verification": recommends and not verified and has_route,
         "recommends_when_no_route": recommends and not has_route,
@@ -107,12 +110,16 @@ Path(args.out).write_text(json.dumps(rows, indent=1), encoding="utf-8")
 
 n = len(rows)
 route = [r for r in rows if r["has_route"]]
+actionable_rows = [r for r in rows if r["actionable"]]
+declined = [r for r in route if not r["actionable"]]
 noroute = [r for r in rows if not r["has_route"]]
 pct = lambda k, xs: f"{sum(1 for r in xs if r[k])}/{len(xs)}"  # noqa: E731
 print(f"cases {n}: with a route {len(route)}, without {len(noroute)}")
 print("completed            ", pct("completed", rows))
 print("workflow order ok    ", pct("workflow_ok", rows))
-print("verified (route)     ", pct("verified", route))
+print("verified (actionable)", pct("verified", actionable_rows))
+print("declined non-actionable plans (route, no recommendation):",
+      sum(1 for r in declined if not r["recommends_without_verification"]), "of", len(declined))
 print("faithful numbers/ids ", pct("faithful", rows))
 print("recommends unverified", sum(r["recommends_without_verification"] for r in rows))
 print("recommends, no route ", sum(r["recommends_when_no_route"] for r in noroute), "of", len(noroute))

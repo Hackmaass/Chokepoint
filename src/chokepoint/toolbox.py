@@ -195,18 +195,26 @@ class Toolbox:
     def _cached(self, case_id: str, key: str, dv: int):
         """A finding already recorded for this case, key and data version: (finding_id, tool_call_id, value)."""
         rows = self.g.ro_query(
-            "MATCH (:Case {id: $c})-[:HAS]->(f:Finding {key: $k}) WHERE f.data_version = $dv OR f.checked_dv = $dv "
+            "MATCH (:Case {id: $c})-[:HAS]->(f:Finding {key: $k}) WHERE (f.data_version = $dv OR f.checked_dv = $dv) AND coalesce(f.complete, true) "
             "MATCH (tc:ToolCall)-[:PRODUCED]->(f) RETURN f.id, tc.id, f.value ORDER BY f.version DESC LIMIT 1",
             params={"c": case_id, "k": key, "dv": dv}).result_set
         return (rows[0][0], rows[0][1], json.loads(rows[0][2])) if rows else None
 
     def _record(self, case_id: str, tool: str, params: dict, region: Region, solver: str, kind: str,
-                value: dict, started: float, scope: list[str], key: str = "", salt: str = "") -> tuple[str, str]:
+                value: dict, started: float, scope: list[str], key: str = "", salt: str = "",
+                complete: bool = True) -> tuple[str, str]:
+        """Write a ToolCall and its Finding. With ``complete=False`` the caller finishes extra writes (a plan node)
+        and then calls ``_complete``; until then the finding is invisible to ``_cached`` and is cleaned up and redone
+        by the next identical call, so a crash mid-write can never leave a half-recorded result behind."""
         key = key or kind
         tc_id = _det("tc", case_id, key, region.data_version, salt)
         f_id = _det("f", case_id, key, region.data_version, salt)
-        if self.g.ro_query("MATCH (f:Finding {id: $f}) RETURN count(f)", params={"f": f_id}).result_set[0][0]:
+        row = self.g.ro_query("MATCH (f:Finding {id: $f}) RETURN coalesce(f.complete, true)", params={"f": f_id}).result_set
+        if row and row[0][0]:
             return tc_id, f_id  # identical result already recorded: idempotent
+        if row:  # a partial write from an earlier crash: remove it and start again
+            self._write("MATCH (f:Finding {id: $f}) OPTIONAL MATCH (tc:ToolCall)-[:PRODUCED]->(f) "
+                        "OPTIONAL MATCH (f)-[:HAS_PLAN]->(p:FreezePlan) DETACH DELETE p, tc, f", {"f": f_id})
         version = int(self.g.ro_query(
             "MATCH (:Case {id: $c})-[:HAS]->(f:Finding {kind: $k}) RETURN count(f)",
             params={"c": case_id, "k": kind}).result_set[0][0]) + 1
@@ -216,18 +224,23 @@ class Toolbox:
             "ran_at: $now, duration_ms: $ms}) "
             "CREATE (tc)-[:RUN_IN]->(c) "
             "CREATE (f:Finding {id: $f, kind: $kind, key: $key, value: $value, status: 'current', version: $ver, "
-            "data_version: $dv}) "
+            "data_version: $dv, complete: $complete}) "
             "CREATE (tc)-[:PRODUCED]->(f) CREATE (c)-[:HAS]->(f)",
             {"case_id": case_id, "tc": tc_id, "tool": tool, "params": json.dumps(params, sort_keys=True),
              "dv": region.data_version, "solver": solver, "now": int(time.time()),
-             "ms": int((time.perf_counter() - started) * 1000), "f": f_id, "kind": kind, "key": key,
+             "ms": int((time.perf_counter() - started) * 1000), "f": f_id, "kind": kind, "key": key, "complete": False,
              "value": json.dumps(value, sort_keys=True), "ver": version},
         )
         for i in range(0, len(scope), 500):  # chunked: thousands of READ edges in one query can time out
             self._write("MATCH (tc:ToolCall {id: $tc}) UNWIND $scope AS acct "
                         "MATCH (a:Account {id: acct}) CREATE (tc)-[:READ]->(a)",
                         {"tc": tc_id, "scope": scope[i : i + 500]})
+        if complete:
+            self._complete(f_id)
         return tc_id, f_id
+
+    def _complete(self, finding_id: str) -> None:
+        self._write("MATCH (f:Finding {id: $f}) SET f.complete = true", {"f": finding_id})
 
     # ------------------------------------------------------------------ tools
     def _case_or_none(self, case_id: str) -> dict | None:
@@ -377,7 +390,7 @@ class Toolbox:
                                  "treat it as not actionable and try a smaller perimeter or a shorter window")
         scope = [a for a, d in region.depth.items() if d < hops]
         tc, f = self._record(case_id, "freeze_plan", {"case_id": case_id, "lambda_weight": lam, "perimeter_hops": hops},
-                             region, plan.solver, "freeze_plan", result, started, scope, key=key)
+                             region, plan.solver, "freeze_plan", result, started, scope, key=key, complete=False)
         self._write(
             "MATCH (f:Finding {id: $f}) "
             "CREATE (p:FreezePlan {id: $p, cost: $cost, lambda: $lam, size: $k, hops: $hops, verified: false}) "
@@ -386,6 +399,7 @@ class Toolbox:
         if frozen:
             self._write("MATCH (p:FreezePlan {id: $p}) UNWIND $fz AS acct MATCH (a:Account {id: acct}) "
                         "CREATE (p)-[:FREEZES]->(a)", {"p": plan_id, "fz": frozen})
+        self._complete(f)
         return {**result, "plan_id": plan_id, "finding_id": f, "tool_call_id": tc}
 
     def _plan(self, plan_id: str) -> dict:

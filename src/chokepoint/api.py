@@ -25,7 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .agent import AUDITOR_PROMPT, AUDITOR_SPECS, answer_card, run_agent
-from .config import PROJECT_ROOT
+from .config import PROJECT_ROOT, load_env
 from .db import connect
 from .llm import REPLAY_DIR, LLMClient
 from .toolbox import Toolbox
@@ -34,6 +34,7 @@ EXAMPLES = PROJECT_ROOT / "examples" / "examples.json"
 MAX_CONCURRENT_RUNS = 2
 TOOLS = {"open_case", "flow", "freeze_plan", "verify_plan", "resume_case", "explain_finding", "refresh_case",
          "audit_checks"}
+load_env()
 DEMO = os.environ.get("DEMO_MODE", "1") != "0"  # simulated late transfers and reset (synthetic edits only)
 
 app = FastAPI(title="Chokepoint", version="0.1.0")
