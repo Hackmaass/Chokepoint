@@ -9,6 +9,7 @@ The perimeter is the set of accounts first reached at exactly ``perimeter_hops``
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import time
@@ -69,6 +70,12 @@ def fmt_ts(minutes: int) -> str:
 
 def _short(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
+
+def _det(prefix: str, *parts) -> str:
+    """Deterministic id: the same inputs always give the same id, so tools are idempotent and a recorded
+    agent run can be replayed against a database holding the same data."""
+    return f"{prefix}-" + hashlib.sha1("|".join(map(str, parts)).encode()).hexdigest()[:8]
 
 
 BASE_QUERY = """
@@ -169,9 +176,19 @@ class Toolbox:
         return res.value, res.flows, res.solver, edges
 
     # ------------------------------------------------------------------ provenance
+    def _cached(self, case_id: str, key: str, dv: int):
+        """A finding already recorded for this case, key and data version: (finding_id, tool_call_id, value)."""
+        rows = self.g.ro_query(
+            "MATCH (:Case {id: $c})-[:HAS]->(f:Finding {key: $k, data_version: $dv}) "
+            "MATCH (tc:ToolCall)-[:PRODUCED]->(f) RETURN f.id, tc.id, f.value ORDER BY f.version DESC LIMIT 1",
+            params={"c": case_id, "k": key, "dv": dv}).result_set
+        return (rows[0][0], rows[0][1], json.loads(rows[0][2])) if rows else None
+
     def _record(self, case_id: str, tool: str, params: dict, region: Region, solver: str, kind: str,
-                value: dict, started: float, scope: list[str]) -> tuple[str, str]:
-        tc_id, f_id = _short("tc"), _short("f")
+                value: dict, started: float, scope: list[str], key: str = "") -> tuple[str, str]:
+        key = key or kind
+        tc_id = _det("tc", case_id, key, region.data_version)
+        f_id = _det("f", case_id, key, region.data_version)
         version = int(self.g.ro_query(
             "MATCH (:Case {id: $c})-[:HAS]->(f:Finding {kind: $k}) RETURN count(f)",
             params={"c": case_id, "k": kind}).result_set[0][0]) + 1
@@ -180,12 +197,12 @@ class Toolbox:
             "CREATE (tc:ToolCall {id: $tc, tool: $tool, params: $params, data_version: $dv, solver: $solver, "
             "ran_at: $now, duration_ms: $ms}) "
             "CREATE (tc)-[:RUN_IN]->(c) "
-            "CREATE (f:Finding {id: $f, kind: $kind, value: $value, status: 'current', version: $ver, "
+            "CREATE (f:Finding {id: $f, kind: $kind, key: $key, value: $value, status: 'current', version: $ver, "
             "data_version: $dv}) "
             "CREATE (tc)-[:PRODUCED]->(f) CREATE (c)-[:HAS]->(f)",
             {"case_id": case_id, "tc": tc_id, "tool": tool, "params": json.dumps(params, sort_keys=True),
              "dv": region.data_version, "solver": solver, "now": int(time.time()),
-             "ms": int((time.perf_counter() - started) * 1000), "f": f_id, "kind": kind,
+             "ms": int((time.perf_counter() - started) * 1000), "f": f_id, "kind": kind, "key": key,
              "value": json.dumps(value, sort_keys=True), "ver": version},
         )
         if scope:
@@ -205,8 +222,15 @@ class Toolbox:
         t = parse_ts(alert_ts)
         dv = self.latest_batch()
         region = extract_region(self.g, account, t, int(window_days) * DAY, int(perimeter_hops), dv, MAX_CASE_NODES)
+        case_id = _det("c", account, t, int(window_days), int(perimeter_hops), dv)
+        known = self._cached(case_id, "region", dv)
+        if known:
+            return {"case_id": case_id, "alerted_account": account, "alert_ts": fmt_ts(t), "data_version": dv,
+                    "window_days": int(window_days), "perimeter_hops": int(perimeter_hops), **known[2],
+                    "note": ("no route from the alerted account to the perimeter in this window; widen the "
+                             "window or the perimeter") if not known[2]["has_route_to_perimeter"] else "",
+                    "already_open": True}
         perimeter, trans, freezable = self._network_parts(region)
-        case_id = _short("c")
         self._write(
             "CREATE (:Case {id: $id, origin: $o, alert_ts: $t, window_min: $w, hops: $k, data_version: $dv, "
             "status: 'open', created_at: $now})",
@@ -232,6 +256,9 @@ class Toolbox:
     def tool_flow(self, case_id: str) -> dict:
         started = time.perf_counter()
         case = self._case(case_id)
+        known = self._cached(case_id, "flow", int(case["data_version"]))
+        if known:
+            return {**known[2], "finding_id": known[0], "tool_call_id": known[1], "already_computed": True}
         region = self._region(case)
         perimeter, trans, _ = self._network_parts(region)
         value, flows, solver, edges = self._money_flow(region, trans, perimeter, set(), "open")
@@ -271,6 +298,12 @@ class Toolbox:
         lam = float(lambda_weight)
         if not 0 <= lam <= 8:
             raise ToolError("BAD_ARGUMENT", "lambda_weight must be between 0 and 8")
+        key = f"freeze_plan:{lam:g}:{hops}"
+        plan_id = _det("p", case_id, lam, hops, case["data_version"])
+        known = self._cached(case_id, key, int(case["data_version"]))
+        if known:
+            return {**known[2], "plan_id": plan_id, "finding_id": known[0], "tool_call_id": known[1],
+                    "already_computed": True}
         region = self._region(case, hops)
         perimeter, trans, freezable = self._network_parts(region)
         base = self._base_activity(region, trans, freezable)
@@ -318,8 +351,7 @@ class Toolbox:
                                  "treat it as not actionable and try a smaller perimeter or a shorter window")
         scope = [a for a, d in region.depth.items() if d < hops]
         tc, f = self._record(case_id, "freeze_plan", {"case_id": case_id, "lambda_weight": lam, "perimeter_hops": hops},
-                             region, plan.solver, "freeze_plan", result, started, scope)
-        plan_id = _short("p")
+                             region, plan.solver, "freeze_plan", result, started, scope, key=key)
         self._write(
             "MATCH (f:Finding {id: $f}) "
             "CREATE (p:FreezePlan {id: $p, cost: $cost, lambda: $lam, size: $k, hops: $hops, verified: false}) "
@@ -346,6 +378,9 @@ class Toolbox:
         started = time.perf_counter()
         info = self._plan(plan_id)
         case = self._case(info["case_id"])
+        known = self._cached(info["case_id"], f"verify:{plan_id}", int(case["data_version"]))
+        if known:
+            return {**known[2], "finding_id": known[0], "tool_call_id": known[1], "already_computed": True}
         hops = int(info["plan"]["hops"])
         region = self._region(case, hops)
         perimeter = sorted(a for a, d in region.depth.items() if d == hops)
@@ -387,7 +422,7 @@ class Toolbox:
                       "(a consistency check on the same data, not independent evidence about reality)",
         }
         tc, f = self._record(info["case_id"], "verify_plan", {"plan_id": plan_id}, region, "falkordb-shortestPath",
-                             "verification", result, started, [])
+                             "verification", result, started, [], key=f"verify:{plan_id}")
         return {**result, "finding_id": f, "tool_call_id": tc}
 
     def tool_resume_case(self, case_id: str) -> dict:
@@ -430,3 +465,69 @@ class Toolbox:
             "duration_ms": int(tc.properties["duration_ms"]), "accounts_read": int(n),
             "result": json.loads(f.properties["value"]),
         }
+
+    # ------------------------------------------------------------------ views for the UI (not agent tools)
+    def list_cases(self, limit: int = 20) -> list[dict]:
+        rows = self.g.ro_query(
+            "MATCH (c:Case) OPTIONAL MATCH (c)-[:HAS]->(f:Finding) "
+            "RETURN c.id, c.origin, c.alert_ts, c.hops, c.created_at, count(f) ORDER BY c.created_at DESC LIMIT $n",
+            params={"n": int(limit)}).result_set
+        return [{"case_id": cid, "alerted_account": o, "alert_ts": fmt_ts(int(t)), "perimeter_hops": int(h),
+                 "created_at": int(ca), "findings": int(n)} for cid, o, t, h, ca, n in rows]
+
+    def graph_view(self, case_id: str, plan_id: str | None = None, max_nodes: int = 250) -> dict:
+        """Evidence subgraph for the screen: the alerted account, where money can flow, and the plan."""
+        case = self._case(case_id)
+        frozen: set[str] = set()
+        rule: set[str] = set()
+        hops = int(case["hops"])
+        verified = None
+        if plan_id:
+            info = self._plan(plan_id)
+            hops = int(info["plan"]["hops"])
+            frozen = set(info["frozen"])
+            verified = bool(info["plan"].get("verified"))
+            val = self.g.ro_query("MATCH (f:Finding {id: $f}) RETURN f.value",
+                                  params={"f": info["finding_id"]}).result_set[0][0]
+            rule = set(json.loads(val)["rule_of_thumb_plan"]["accounts"])
+        region = self._region(case, hops)
+        perimeter, trans, _ = self._network_parts(region)
+        _, flows, _, _ = self._money_flow(region, trans, perimeter, set(), "view")
+        if len(region.depth) <= max_nodes:
+            keep = set(region.depth)
+        else:
+            keep = {region.origin} | frozen | rule | {a for e in flows for a in e}
+            hop1_by_usd = sorted((d for (s, d) in trans if s == region.origin),
+                                 key=lambda d: -trans[(region.origin, d)][2])
+            for a in hop1_by_usd:
+                if len(keep) >= max_nodes:
+                    break
+                keep.add(a)
+        edges = [(s, d) for (s, d) in trans if s in keep and d in keep]
+        edges.sort(key=lambda e: -trans[e][2])
+        edges = edges[: 3 * max_nodes]
+
+        def role(a: str) -> str:
+            if a == region.origin:
+                return "origin"
+            if a in frozen:
+                return "frozen"
+            if a in rule:
+                return "rule"
+            return "perimeter" if a in perimeter else "other"
+
+        return {
+            "case_id": case_id, "plan_id": plan_id, "verified": verified, "perimeter_hops": hops,
+            "total_accounts": len(region.depth), "shown_accounts": len(keep), "truncated": len(keep) < len(region.depth),
+            "nodes": [{"id": a, "label": a.split(":")[-1][-6:], "depth": region.depth[a], "role": role(a)}
+                      for a in sorted(keep)],
+            "edges": [{"from": s, "to": d, "usd_cents": trans[(s, d)][2], "transfers": trans[(s, d)][0],
+                       "flow_usd_cents": int(flows.get((s, d), 0))} for (s, d) in edges],
+        }
+
+    def delete_case(self, case_id: str) -> None:
+        """Remove a case with its findings, plans and receipts (used by scripts and cleanup)."""
+        self._write(
+            "MATCH (c:Case {id: $id}) OPTIONAL MATCH (c)-[:HAS]->(f:Finding) "
+            "OPTIONAL MATCH (f)-[:HAS_PLAN]->(p:FreezePlan) OPTIONAL MATCH (tc:ToolCall)-[:RUN_IN]->(c) "
+            "DETACH DELETE p, f, tc, c", {"id": case_id})

@@ -1,0 +1,82 @@
+[
+  {
+    "account": "024515:80EBB2100",
+    "alert_ts": "2022-09-04T11:36",
+    "split": "test",
+    "frac": 0.7,
+    "accounts_in_region": 14,
+    "plan_accounts": 2,
+    "movable_usd_cents": 1097882,
+    "rule_leaves_usd_cents": 1097882
+  },
+  {
+    "account": "015231:803A568D0",
+    "alert_ts": "2022-09-04T17:54",
+    "split": "test",
+    "frac": 0.7,
+    "accounts_in_region": 18,
+    "plan_accounts": 3,
+    "movable_usd_cents": 1516737,
+    "rule_leaves_usd_cents": 1501598
+  },
+  {
+    "account": "0119:8000DA7D0",
+    "alert_ts": "2022-09-11T09:16",
+    "split": "dev",
+    "frac": 0.7,
+    "accounts_in_region": 20,
+    "plan_accounts": 3,
+    "movable_usd_cents": 3693329,
+    "rule_leaves_usd_cents": 3277988
+  },
+  {
+    "account": "021174:800737690",
+    "alert_ts": "2022-09-10T10:17",
+    "split": "dev",
+    "frac": 0.7,
+    "accounts_in_region": 21,
+    "plan_accounts": 3,
+    "movable_usd_cents": 2241020,
+    "rule_leaves_usd_cents": 1933259
+  },
+  {
+    "account": "0135403:80E2226E0",
+    "alert_ts": "2022-09-06T08:57",
+    "split": "test",
+    "frac": 0.7,
+    "accounts_in_region": 33,
+    "plan_accounts": 3,
+    "movable_usd_cents": 3089338,
+    "rule_leaves_usd_cents": 2123791
+  },
+  {
+    "account": "0111631:80A38F130",
+    "alert_ts": "2022-09-03T16:08",
+    "split": "dev",
+    "frac": 0.7,
+    "accounts_in_region": 20,
+    "plan_accounts": 2,
+    "movable_usd_cents": 2739375,
+    "rule_leaves_usd_cents": 1688846
+  },
+  {
+    "account": "012963:80296CA20",
+    "alert_ts": "2022-09-04T14:07",
+    "split": "test",
+    "frac": 0.7,
+    "accounts_in_region": 12,
+    "plan_accounts": 2,
+    "movable_usd_cents": 241592,
+    "rule_leaves_usd_cents": 131052
+  },
+  {
+    "account": "0113523:8054100E0",
+    "alert_ts": "2022-09-04T16:44",
+    "split": "test",
+    "frac": 0.7,
+    "accounts_in_region": 28,
+    "plan_accounts": 3,
+    "movable_usd_cents": 1703004,
+    "rule_leaves_usd_cents": 688968
+  }
+]
