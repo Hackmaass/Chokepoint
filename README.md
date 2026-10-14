@@ -34,6 +34,7 @@ Offline evaluation on 155 laundering patterns from the IBM synthetic AML data, s
 - **Its frozen accounts are more precise**: +0.19 [+0.07, +0.32] more of them are accounts that took part in the laundering (a secondary metric; reported because the primary one tied).
 - **It touches more everyday transfers than the rule of thumb** (+4.8 per case) but fewer than top-degree (-4.6).
 - **Only 50% of the rule of thumb's picks lie on a route to the perimeter**; 61% of its innocent picks have no route at all. Every account Chokepoint freezes is on a route by construction, and the plan is **verified** to cut all of them.
+- **To guarantee that no route is left, the simple rules need more accounts**: the most-recent-recipients rule needs more than the minimum cut in 64% of cases (median 3 accounts against 1); highest throughput in 70%; highest degree in 47% ([`docs/guarantee-and-latency.md`](docs/guarantee-and-latency.md)). The tools take a median of 0.27 s from alert to verified plan.
 - Caveats: synthetic data; cases are selected from labelled laundering patterns (labels are never used by the planner); static view of past transfers (no timing); counts, not amounts; 40-43 usable cases per alert time.
 
 ### The agent itself

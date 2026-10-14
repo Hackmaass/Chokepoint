@@ -15,14 +15,14 @@ At equal budget, my minimum-cost vertex cut blocked about the same share of the 
 What the graph did buy:
 
 - **Precision.** The accounts it freezes are more often part of the laundering (+0.19, interval +0.07 to +0.32). 61% of the innocent accounts the rule of thumb picks are accounts the money cannot even pass through.
-- **A guarantee.** Every account on the plan lies on a route, and after deleting them from a copy of the graph, `shortestPath` finds no route left to the perimeter. The rule of thumb leaves routes open in the worked examples (about $19k of $22k still movable in one).
+- **A guarantee, and a smaller one.** Every account on the plan lies on a route, and after deleting them from a copy of the graph, `shortestPath` finds no route left to the perimeter. To get the same guarantee the one-line rule needs more accounts than the minimum cut in 64% of cases (median 3 against 1). With a same-size rule-of-thumb plan, routes stay open in the worked examples (about $19k of $22k still movable in one).
 - **Receipts and memory.** Every result is a node linked to the tool run, parameters, data version and the accounts it read. That is what makes the next section possible.
 
 ## Late data: re-run only what changed
 
 When a late or back-dated transfer arrives, which of the saved findings are now wrong? Re-running everything is correct but wasteful. In Chokepoint each finding is linked by `READ` edges to the accounts its tool run looked at, so the question becomes one traversal: *which current findings read an account that has a new transfer in the window?* Only those are re-run; the old ones are marked superseded and linked to their replacements; the rest are carried forward.
 
-I tested this against an independent twin case recomputed from scratch at the new data version: TODO final numbers (answers equal to recompute-everything, findings re-run vs total, missed changes).
+I tested this on 40 held-out cases with four kinds of late batch (a bypass route, a dead-end recipient, an unrelated transfer, an old out-of-window transfer), against an independent twin case recomputed from scratch at the new data version. The refreshed answers were equal to a full recomputation in **40 of 40** cases, the scope rule **missed no change**, and it re-ran half of the findings. The honest part: savings come from late data that does not touch the case; when it does, every finding of that case is re-run (they share a scope) and half of those re-runs were unchanged. A finer scope per finding is the next step.
 
 ## A FalkorDB finding
 
