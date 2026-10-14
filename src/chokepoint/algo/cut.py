@@ -278,9 +278,24 @@ def certify(net: SplitNetwork, result: FlowResult) -> bool:
     return not (_residual_reach(net, result.flows) & sinks)
 
 
-def solve(db, net: SplitNetwork, graph_name: str) -> FlowResult:
-    """FalkorDB first, accepted only with a certificate; otherwise exact NetworkX."""
-    got = run_falkordb_maxflow(db, net, graph_name) if db is not None else None
+@dataclass(frozen=True)
+class FlowNetwork:
+    """A plain capacitated network (no node splitting), e.g. money moved between accounts in cents."""
+
+    source_node: str
+    sink_nodes: tuple[str, ...]
+    edges: dict[tuple[str, str], int]
+
+
+def solve(db, net: SplitNetwork | FlowNetwork, graph_name: str) -> FlowResult:
+    """FalkorDB first, accepted only with a certificate; otherwise exact NetworkX.
+
+    A capacity range FalkorDB cannot take (max >= min * 2^32) goes straight to the exact solver.
+    """
+    try:
+        got = run_falkordb_maxflow(db, net, graph_name) if db is not None else None
+    except CapacityRangeError:
+        got = None
     if got is not None and certify(net, got):
         return got
     return solve_networkx(net)

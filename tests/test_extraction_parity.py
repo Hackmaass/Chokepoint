@@ -9,6 +9,7 @@ from chokepoint.casegraph import CaseTooLarge, extract_region
 from chokepoint.cases import make_cases
 from chokepoint.data_ibm import DEFAULT_CSV, load_transactions
 from chokepoint.db import connect
+from chokepoint.fx import to_usd_cents
 
 pytestmark = pytest.mark.db
 
@@ -54,8 +55,13 @@ def polars_region(df: pl.DataFrame, origin: str, t: int, window: int, hops: int)
             return None
     if not parts:
         return depth, {}
-    agg = pl.concat(parts).group_by("a_src", "a_dst").agg(pl.len().alias("n"), pl.col("ts_min").max().alias("last"))
-    return depth, {(s, d): (n, last) for s, d, n, last in agg.iter_rows()}
+    allp = pl.concat(parts).with_columns((pl.col("amt_paid") * 100).round(0).cast(pl.Int64).alias("cents"))
+    per_cur = allp.group_by("a_src", "a_dst", "cur_paid").agg(pl.col("cents").sum().alias("cents"))
+    usd: dict[tuple[str, str], int] = {}
+    for s, d, cur, cents in per_cur.iter_rows():
+        usd[(s, d)] = usd.get((s, d), 0) + to_usd_cents(int(cents), cur)
+    agg = allp.group_by("a_src", "a_dst").agg(pl.len().alias("n"), pl.col("ts_min").max().alias("last"))
+    return depth, {(s, d): (n, last, usd[(s, d)]) for s, d, n, last in agg.iter_rows()}
 
 
 def test_cypher_extraction_matches_polars_on_20_dev_cases(df, graph):

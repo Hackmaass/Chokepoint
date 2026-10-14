@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from .fx import to_usd_cents
+
 RESULT_CAP = 1_000_000  # must stay below the server's RESULTSET_SIZE; hitting it means truncation
 QUERY_TIMEOUT_MS = 30_000
 
@@ -16,7 +18,7 @@ QUERY_TIMEOUT_MS = 30_000
 FRONTIER_QUERY = """
 MATCH (a:Account)-[t:TRANSFER]->(b:Account)
 WHERE a.id IN $frontier AND t.ts >= $t_from AND t.ts <= $t_to AND t.batch <= $data_version
-RETURN a.id AS s, b.id AS d, count(t) AS n, max(t.ts) AS last
+RETURN a.id AS s, b.id AS d, t.cur AS cur, sum(t.amt) AS amt, count(t) AS n, max(t.ts) AS last
 """
 
 
@@ -40,8 +42,8 @@ class Region:
     hops: int
     data_version: int
     depth: dict[str, int] = field(default_factory=dict)
-    # (from, to) -> (transfer count, last timestamp)
-    edges: dict[tuple[str, str], tuple[int, int]] = field(default_factory=dict)
+    # (from, to) -> (transfer count, last timestamp, total moved in USD cents)
+    edges: dict[tuple[str, str], tuple[int, int, int]] = field(default_factory=dict)
     queries: int = 0
 
     @property
@@ -86,10 +88,11 @@ def extract_region(
         if len(rows) >= RESULT_CAP:
             raise TruncatedResult(f"hop {hop + 1} returned {len(rows)} rows (cap {RESULT_CAP})")
         new: list[str] = []
-        for s, d, n, last in rows:
+        for s, d, cur, amt, n, last in rows:
             if s == d:
                 continue
-            region.edges[(s, d)] = (int(n), int(last))
+            n0, last0, usd0 = region.edges.get((s, d), (0, 0, 0))
+            region.edges[(s, d)] = (n0 + int(n), max(last0, int(last)), usd0 + to_usd_cents(int(amt), cur))
             if d not in region.depth:
                 region.depth[d] = hop + 1
                 new.append(d)
