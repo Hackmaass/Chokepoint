@@ -17,8 +17,9 @@ import os
 import threading
 import time
 import uuid
+from collections import defaultdict, deque
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -52,6 +53,31 @@ def toolbox() -> Toolbox:
     return _state["tb"]
 
 
+class RateLimiter:
+    """A small per-client sliding-window limiter for the endpoints that cost something (tools, runs, demo edits)."""
+
+    def __init__(self, limit: int, window_s: float = 60.0):
+        self.limit, self.window, self.hits = limit, window_s, defaultdict(deque)
+        self._lock = threading.Lock()
+
+    def __call__(self, request: Request) -> None:
+        ip = (request.headers.get("x-forwarded-for", "").split(",")[0].strip() if TRUST_PROXY else "") or (
+            request.client.host if request.client else "unknown")
+        now = time.monotonic()
+        with self._lock:
+            q = self.hits[ip]
+            while q and now - q[0] > self.window:
+                q.popleft()
+            if len(q) >= self.limit:
+                raise HTTPException(429, "too many requests; slow down", headers={"Retry-After": "10"})
+            q.append(now)
+
+
+TRUST_PROXY = os.environ.get("TRUST_PROXY", "0") == "1"  # behind Caddy or nginx: use X-Forwarded-For
+tool_limit = RateLimiter(int(os.environ.get("TOOL_RATE_LIMIT", "60")))
+run_limit = RateLimiter(int(os.environ.get("RUN_RATE_LIMIT", "8")))
+
+
 class RunRequest(BaseModel):
     task: str = Field(min_length=5, max_length=600)
     mode: str = Field(default="live", pattern="^(live|replay)$")
@@ -69,14 +95,14 @@ def examples() -> list[dict]:
     return json.loads(EXAMPLES.read_text(encoding="utf-8")) if EXAMPLES.exists() else []
 
 
-@app.post("/api/tools/{tool}")
+@app.post("/api/tools/{tool}", dependencies=[Depends(tool_limit)])
 def call_tool(tool: str, args: dict) -> dict:
     if tool not in TOOLS:
         raise HTTPException(404, "unknown tool")
     return toolbox().call(tool, args)
 
 
-@app.post("/api/demo/late-transfers/{case_id}")
+@app.post("/api/demo/late-transfers/{case_id}", dependencies=[Depends(tool_limit)])
 def demo_late_transfers(case_id: str) -> dict:
     """Simulate late, back-dated transfers for a case (synthetic; creates a route that bypasses the plan)."""
     if not DEMO:
@@ -128,7 +154,7 @@ def _execute(run_id: str, req: RunRequest) -> None:
         _run_slots.release()
 
 
-@app.post("/api/runs")
+@app.post("/api/runs", dependencies=[Depends(run_limit)])
 def start_run(req: RunRequest) -> dict:
     if not _run_slots.acquire(blocking=False):
         raise HTTPException(429, "too many runs in progress; try again in a moment")

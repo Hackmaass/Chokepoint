@@ -269,6 +269,8 @@ class Toolbox:
             raise ToolError("BAD_ARGUMENT", "perimeter_hops must be 2, 3 or 4")
         if not 1 <= int(window_days) <= 14:
             raise ToolError("BAD_ARGUMENT", "window_days must be between 1 and 14")
+        if not isinstance(account, str) or not 3 <= len(account) <= 40 or ":" not in account:
+            raise ToolError("UNKNOWN_ACCOUNT", "account ids look like bank:account", "check the id")
         t = parse_ts(alert_ts)
         # the same account, time, window and perimeter is the same case in every data version
         case_id = _det("c", account, t, int(window_days), int(perimeter_hops), *([self.salt] if self.salt else []))

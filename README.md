@@ -38,7 +38,12 @@ Offline evaluation on 155 laundering patterns from the IBM synthetic AML data, s
 
 ### The agent itself
 
-_Agent evaluation (workflow, verification, number faithfulness over held-out cases): filled in by `scripts/eval_agent.py`, see `docs/agent-eval.md`._
+Held-out evaluation of the live agent on 60 cases (45 with a route to the perimeter, 15 without); details and the history of what the first runs found in [`docs/agent-eval.md`](docs/agent-eval.md):
+
+- **60/60 completed** and **60/60 followed a valid workflow** (open the case first; verify before recommending).
+- **40/40 actionable plans were verified** before being recommended; **5/5 plans needing more than 25 accounts were declined**.
+- **0 answers contained a dollar amount or account id that did not come from a tool result**; 0 recommendations without verification; 0 recommendations where no route exists; at most two widenings.
+- The first run was worse (8 runs looped on high-volume hub accounts until the step limit) and exposed a half-written-result bug; both were fixed and tested. Because the fixes were made after seeing those cases, the numbers above are optimistic for them; the check on the other half of the patterns is in `docs/agent-eval.md`.
 
 ## Why FalkorDB
 
