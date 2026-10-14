@@ -18,8 +18,9 @@ FalkorDB's capacity-range rule ``max < min * 2^32``).
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Iterable, Literal
+from typing import Literal
 
 import networkx as nx
 

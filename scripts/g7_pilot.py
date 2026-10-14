@@ -12,14 +12,17 @@ from __future__ import annotations
 
 import argparse
 import math
-import statistics as st
-import sys
 from collections import defaultdict
 
 import networkx as nx
 import polars as pl
 
-from chokepoint.algo.cut import NoFiniteCut, NoPath, build_split_network, extract_cut, reaches_exit, solve_networkx
+from chokepoint.algo.cut import (
+    build_split_network,
+    extract_cut,
+    reaches_exit,
+    solve_networkx,
+)
 from chokepoint.data_ibm import load_transactions
 
 ap = argparse.ArgumentParser()

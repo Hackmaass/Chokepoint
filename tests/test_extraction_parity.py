@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import pytest
 import polars as pl
+import pytest
 
 from chokepoint.casegraph import CaseTooLarge, extract_region
 from chokepoint.cases import make_cases

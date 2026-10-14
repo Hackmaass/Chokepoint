@@ -102,8 +102,8 @@ export const api = {
     ),
   graph: (caseId: string, planId?: string) =>
     fetch(`/api/cases/${caseId}/graph${planId ? `?plan_id=${planId}` : ''}`).then((r) => j<GraphView>(r)),
-  startRun: (task: string, mode: 'live' | 'replay') =>
-    fetch('/api/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task, mode }) }).then((r) =>
+  startRun: (task: string, mode: 'live' | 'replay', role: 'investigator' | 'auditor' = 'investigator') =>
+    fetch('/api/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task, mode, role }) }).then((r) =>
       j<{ run_id: string }>(r),
     ),
 }
@@ -120,6 +120,8 @@ export const STEP_NAMES: Record<string, string> = {
   resume_case: 'Resumed case',
   explain_finding: 'Read receipt',
   refresh_case: 'Re-ran affected findings',
+  audit_checks: 'Ran audit checks',
+  submit_audit: 'Recorded audit verdict',
 }
 
 /** Mirrors the server's answer_card: numbers come from tool results only. */

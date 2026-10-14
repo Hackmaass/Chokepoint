@@ -3,7 +3,7 @@ import Graph from './Graph'
 import { api, buildCard, STEP_NAMES, usd, usd2, type Card, type CaseRow, type Example, type GraphView, type TraceEvent } from './api'
 
 type Mode = 'live' | 'replay' | 'tools'
-type Tab = 'steps' | 'compare' | 'receipt' | 'changes'
+type Tab = 'steps' | 'compare' | 'receipt' | 'changes' | 'audit'
 
 function loadTheme(): string {
   try {
@@ -41,6 +41,7 @@ export default function App() {
   const [refresh, setRefresh] = useState<Record<string, any> | null>(null)
   const [demo, setDemo] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [audit, setAudit] = useState<{ checks?: any[]; verdict?: string; note?: string; blocking?: string[]; running?: boolean; error?: string } | null>(null)
   const source = useRef<EventSource | null>(null)
 
   useEffect(() => {
@@ -227,6 +228,39 @@ export default function App() {
     setBusy(false)
   }
 
+  async function askAuditor() {
+    if (!plan || !caseId) return
+    setAudit({ running: true })
+    setTab('audit')
+    try {
+      if (mode === 'tools') {
+        const r = await api.tool('audit_checks', { plan_id: plan.plan_id })
+        setAudit(r.error ? { error: `${r.error.code}: ${r.error.message}` } : { checks: r.checks, blocking: r.blocking_failed })
+        return
+      }
+      const { run_id } = await api.startRun(`Audit plan ${plan.plan_id} for case ${caseId}.`, mode, 'auditor')
+      const es = new EventSource(`/api/runs/${run_id}/events`)
+      es.onmessage = (m) => {
+        const e = JSON.parse(m.data) as TraceEvent
+        if (e.type === 'tool_result' && e.tool === 'audit_checks' && e.result)
+          setAudit((a) => ({ ...a, checks: e.result!.checks, blocking: e.result!.blocking_failed, running: true }))
+        if (e.type === 'tool_result' && e.tool === 'submit_audit' && e.result)
+          setAudit((a) => ({ ...a, ...(e.result!.error ? { error: `${e.result!.error.code}: ${e.result!.error.message}` } : { verdict: e.result!.verdict, note: e.result!.note }) }))
+        if (e.type === 'error') setAudit((a) => ({ ...a, error: e.message, running: false }))
+      }
+      es.addEventListener('end', () => {
+        es.close()
+        setAudit((a) => ({ ...a, running: false }))
+      })
+      es.onerror = () => {
+        es.close()
+        setAudit((a) => ({ ...a, running: false }))
+      }
+    } catch (e) {
+      setAudit({ error: String(e).replace(/^Error: /, '') })
+    }
+  }
+
   async function loadReceipt() {
     if (!card.plan) return
     setReceipt(await api.tool('explain_finding', { finding_id: card.plan.finding_id }))
@@ -385,9 +419,9 @@ export default function App() {
 
           <div className="panel">
             <div className="tabs" role="tablist">
-              {((refresh ? ['steps', 'compare', 'receipt', 'changes'] : ['steps', 'compare', 'receipt']) as Tab[]).map((t) => (
+              {(['steps', 'compare', 'receipt', ...(plan ? ['audit'] : []), ...(refresh ? ['changes'] : [])] as Tab[]).map((t) => (
                 <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
-                  {t === 'steps' ? 'Steps' : t === 'compare' ? 'Compare' : t === 'receipt' ? 'Receipt' : 'Changes'}
+                  {t === 'steps' ? 'Steps' : t === 'compare' ? 'Compare' : t === 'receipt' ? 'Receipt' : t === 'audit' ? 'Audit' : 'Changes'}
                 </button>
               ))}
             </div>
@@ -438,6 +472,32 @@ export default function App() {
                         </tbody>
                       </table>
                     </>
+                  )}
+                </div>
+              )}
+              {tab === 'audit' && plan && (
+                <div aria-live="polite">
+                  <p className="note">A second agent, the auditor, sees only the case and plan stored in the graph, not the investigator's messages. It runs deterministic checks and records a verdict; code refuses an "agree" while a blocking check fails.</p>
+                  <button className="btn small" disabled={audit?.running} onClick={askAuditor}>{audit?.running ? 'Auditing…' : mode === 'tools' ? 'Run audit checks' : 'Ask the auditor'}</button>
+                  {audit?.error && <p className="error" role="alert">{audit.error}</p>}
+                  {audit?.checks && (
+                    <table style={{ marginTop: 12 }}>
+                      <thead><tr><th>Check</th><th>Result</th></tr></thead>
+                      <tbody>
+                        {audit.checks.map((c: any) => (
+                          <tr key={c.check}>
+                            <td>{c.check.replace(/_/g, ' ')}{c.blocking ? ' (blocking)' : ''}<div className="note">{c.detail}</div></td>
+                            <td>{c.passed ? '✓ passed' : '✕ failed'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                  {audit?.verdict && (
+                    <div className="decision" style={{ marginTop: 12 }}>
+                      <strong>Auditor verdict: {audit.verdict.replace('_', ' ')}.</strong> {audit.note}
+                      <div className="note">Recorded in the graph as a finding; it appears when this case is resumed.</div>
+                    </div>
                   )}
                 </div>
               )}

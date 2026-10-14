@@ -19,15 +19,18 @@ from collections import defaultdict
 from datetime import datetime, timezone
 
 import networkx as nx
+from redis.exceptions import ResponseError
 
 from .algo.cut import (
     FlowNetwork,
     NoFiniteCut,
     NoPath,
     build_split_network,
-    freeze_plan as solve_freeze_plan,
     reaches_exit,
     solve,
+)
+from .algo.cut import (
+    freeze_plan as solve_freeze_plan,
 )
 from .casegraph import (
     CaseTooLarge,
@@ -41,6 +44,7 @@ DAY = 1440
 DEFAULT_WINDOW_DAYS = 7
 MAX_ACTIONABLE_ACCOUNTS = 25  # a plan larger than this is flagged, not presented as a recommendation
 MAX_CASE_NODES = 4000
+HEAVY_TIMEOUT_MS = 30_000  # the server default (3 s) is short on purpose; known-heavy queries ask for more
 
 
 NO_ROUTE_NOTE = ("no route from the alerted account to the perimeter in this window; widen the window or the "
@@ -90,7 +94,8 @@ RETURN a.id AS id, count(t) AS n
 
 
 class Toolbox:
-    def __init__(self, db, tenant: str = "ibm"):
+    def __init__(self, db, tenant: str = "ibm", salt: str = ""):
+        self.salt = salt  # evaluation only: gives a twin case with identical content but different ids
         self.db = db
         self.tenant = tenant
         self.g = db.select_graph(f"tenant_{tenant}")
@@ -110,7 +115,7 @@ class Toolbox:
         return int(self.g.ro_query("MATCH (b:Batch) RETURN max(b.id)").result_set[0][0] or 0)
 
     def _write(self, query: str, params: dict) -> None:
-        self.g.query(query, params=params)
+        self.g.query(query, params=params, timeout=HEAVY_TIMEOUT_MS)
 
     def call(self, tool: str, args: dict) -> dict:
         fn = getattr(self, f"tool_{tool}", None)
@@ -132,6 +137,10 @@ class Toolbox:
             return ToolError("NO_PATH", str(e), "widen the window or the perimeter and try again").as_dict()
         except NoFiniteCut as e:
             return ToolError("NO_FINITE_CUT", str(e)).as_dict()
+        except ResponseError as e:  # the database refused or timed out: report it, do not crash the run
+            if "timed out" in str(e).lower():
+                return ToolError("TIMEOUT", "the database took too long", "try a smaller window or fewer hops").as_dict()
+            return ToolError("DATABASE_ERROR", str(e)[:200]).as_dict()
 
     # ------------------------------------------------------------------ case helpers
     def _case(self, case_id: str) -> dict:
@@ -160,8 +169,8 @@ class Toolbox:
     def _base_activity(self, region: Region, trans: dict, freezable: list[str]) -> dict[str, int]:
         if not freezable:
             return {}
-        rows = self.g.ro_query(BASE_QUERY, params={"ids": freezable, "t_to": region.t_to,
-                                                   "dv": region.data_version}).result_set
+        rows = self.g.ro_query(BASE_QUERY, params={"ids": freezable, "t_to": region.t_to, "dv": region.data_version},
+                               timeout=HEAVY_TIMEOUT_MS).result_set
         total = {a: int(n) for a, n in rows}
         inside: dict[str, int] = defaultdict(int)
         for (s, d), (n, _last, _usd) in trans.items():
@@ -189,10 +198,12 @@ class Toolbox:
         return (rows[0][0], rows[0][1], json.loads(rows[0][2])) if rows else None
 
     def _record(self, case_id: str, tool: str, params: dict, region: Region, solver: str, kind: str,
-                value: dict, started: float, scope: list[str], key: str = "") -> tuple[str, str]:
+                value: dict, started: float, scope: list[str], key: str = "", salt: str = "") -> tuple[str, str]:
         key = key or kind
-        tc_id = _det("tc", case_id, key, region.data_version)
-        f_id = _det("f", case_id, key, region.data_version)
+        tc_id = _det("tc", case_id, key, region.data_version, salt)
+        f_id = _det("f", case_id, key, region.data_version, salt)
+        if self.g.ro_query("MATCH (f:Finding {id: $f}) RETURN count(f)", params={"f": f_id}).result_set[0][0]:
+            return tc_id, f_id  # identical result already recorded: idempotent
         version = int(self.g.ro_query(
             "MATCH (:Case {id: $c})-[:HAS]->(f:Finding {kind: $k}) RETURN count(f)",
             params={"c": case_id, "k": kind}).result_set[0][0]) + 1
@@ -209,10 +220,10 @@ class Toolbox:
              "ms": int((time.perf_counter() - started) * 1000), "f": f_id, "kind": kind, "key": key,
              "value": json.dumps(value, sort_keys=True), "ver": version},
         )
-        if scope:
+        for i in range(0, len(scope), 500):  # chunked: thousands of READ edges in one query can time out
             self._write("MATCH (tc:ToolCall {id: $tc}) UNWIND $scope AS acct "
                         "MATCH (a:Account {id: acct}) CREATE (tc)-[:READ]->(a)",
-                        {"tc": tc_id, "scope": scope})
+                        {"tc": tc_id, "scope": scope[i : i + 500]})
         return tc_id, f_id
 
     # ------------------------------------------------------------------ tools
@@ -244,7 +255,7 @@ class Toolbox:
             raise ToolError("BAD_ARGUMENT", "window_days must be between 1 and 14")
         t = parse_ts(alert_ts)
         # the same account, time, window and perimeter is the same case in every data version
-        case_id = _det("c", account, t, int(window_days), int(perimeter_hops))
+        case_id = _det("c", account, t, int(window_days), int(perimeter_hops), *([self.salt] if self.salt else []))
         case = self._case_or_none(case_id)
         dv = int(case["data_version"]) if case else self.latest_batch()
         head = {"case_id": case_id, "alerted_account": account, "alert_ts": fmt_ts(t), "data_version": dv,
@@ -481,7 +492,7 @@ class Toolbox:
                 "version": int(ver), "data_version": int(dv), "plan_id": pid, "verified": verified,
                 "summary": json.loads(value) if kind in ("region", "flow") else
                            {k: v for k, v in json.loads(value).items()
-                            if k in ("statement", "verified", "money_movable_before_usd_cents", "perimeter_hops")},
+                            if k in ("statement", "verified", "money_movable_before_usd_cents", "perimeter_hops", "verdict", "note")},
             })
         return {
             "case_id": case_id, "alerted_account": case["origin"], "alert_ts": fmt_ts(int(case["alert_ts"])),
@@ -578,6 +589,7 @@ class Toolbox:
         "MATCH (tc:ToolCall)-[:PRODUCED]->(f) "
         "MATCH (tc)-[:READ]->(a:Account)-[t:TRANSFER]-() "
         "WHERE t.batch > coalesce(f.checked_dv, f.data_version) AND t.batch <= $latest AND t.ts <= $t_to "
+        "AND (t.ts >= $t_from OR (f.kind = 'freeze_plan' AND NOT f.key STARTS WITH 'freeze_plan:0:')) "
         "RETURN f.id AS id, count(t) AS n"
     )
 
@@ -614,7 +626,9 @@ class Toolbox:
                     "message": "no newer data than this case's findings; nothing to re-run"}
         t_to = int(case["alert_ts"])
         hits = {r[0]: int(r[1]) for r in self.g.ro_query(
-            self.AFFECTED_QUERY, params={"c": case_id, "latest": latest, "t_to": t_to}).result_set}
+            self.AFFECTED_QUERY, params={"c": case_id, "latest": latest, "t_to": t_to,
+                                         "t_from": t_to - int(case["window_min"])},
+            timeout=HEAVY_TIMEOUT_MS).result_set}
         plan_of = {pid: fid for fid, pid in self.g.ro_query(
             "MATCH (:Case {id: $c})-[:HAS]->(f:Finding {status: 'current'})-[:HAS_PLAN]->(p:FreezePlan) "
             "RETURN f.id, p.id", params={"c": case_id}).result_set}
@@ -711,3 +725,81 @@ class Toolbox:
         self._write("MATCH (c:Case) OPTIONAL MATCH (c)-[:HAS]->(f:Finding) OPTIONAL MATCH (f)-[:HAS_PLAN]->(p:FreezePlan) "
                     "OPTIONAL MATCH (tc:ToolCall)-[:RUN_IN]->(c) DETACH DELETE p, f, tc, c", {})
         return {"reset": True, "latest_data_version": self.latest_batch()}
+
+    # ------------------------------------------------------------------ second agent: audit through shared state
+    BLOCKING_CHECKS = ("verified", "current", "actionable", "no_routes_left")
+
+    def _audit_checks(self, plan_id: str) -> dict:
+        info = self._plan(plan_id)
+        row = self.g.ro_query(
+            "MATCH (f:Finding {id: $f}) RETURN f.value, f.status, coalesce(f.checked_dv, f.data_version)",
+            params={"f": info["finding_id"]}).result_set[0]
+        value, status, checked = json.loads(row[0]), row[1], int(row[2])
+        cp, rule = value["chokepoint_plan"], value["rule_of_thumb_plan"]
+        latest = self.latest_batch()
+        checks = [
+            ("verified", bool(info["plan"].get("verified")), "the independent route check passed"),
+            ("current", status == "current" and checked >= latest,
+             f"findings checked through data version {checked}, latest is {latest}"),
+            ("actionable", bool(value["actionable"]), f"{cp['count']} account(s) to freeze (limit {MAX_ACTIONABLE_ACCOUNTS})"),
+            ("no_routes_left", not cp["routes_left"], "no route from the alerted account to the perimeter remains"),
+            ("frozen_accounts_on_a_route", cp["on_a_route_to_perimeter"] == cp["count"],
+             f"{cp['on_a_route_to_perimeter']} of {cp['count']} frozen accounts lie on a route to the perimeter"),
+            ("not_worse_than_rule_of_thumb", cp["residual_movable_usd_cents"] <= rule["residual_movable_usd_cents"],
+             f"money left movable: plan {cp['residual_movable_usd_cents']} cents, rule of thumb "
+             f"{rule['residual_movable_usd_cents']} cents"),
+        ]
+        out = [{"check": n, "passed": ok, "detail": d, "blocking": n in self.BLOCKING_CHECKS} for n, ok, d in checks]
+        return {"plan_id": plan_id, "case_id": info["case_id"], "checks": out,
+                "blocking_failed": [c["check"] for c in out if c["blocking"] and not c["passed"]]}
+
+    def tool_audit_checks(self, plan_id: str) -> dict:
+        """Deterministic checks on a stored plan. Read-only: the auditor sees the shared graph, not the investigator."""
+        return self._audit_checks(plan_id)
+
+    def tool_submit_audit(self, plan_id: str, verdict: str, note: str = "") -> dict:
+        started = time.perf_counter()
+        if verdict not in ("agree", "disagree", "needs_review"):
+            raise ToolError("BAD_ARGUMENT", "verdict must be agree, disagree or needs_review")
+        checks = self._audit_checks(plan_id)
+        if verdict == "agree" and checks["blocking_failed"]:
+            raise ToolError("AUDIT_INCONSISTENT",
+                            f"cannot agree while blocking checks fail: {', '.join(checks['blocking_failed'])}",
+                            "choose disagree or needs_review and say why")
+        case = self._case(checks["case_id"])
+        dv = int(case["data_version"])
+        region = Region(origin=case["origin"], t_to=int(case["alert_ts"]), t_from=0, hops=0, data_version=dv)
+        value = {"plan_id": plan_id, "verdict": verdict, "note": str(note)[:400], "author": "auditor agent",
+                 "blocking_failed": checks["blocking_failed"],
+                 "passed": [c["check"] for c in checks["checks"] if c["passed"]]}
+        tc, f = self._record(checks["case_id"], "submit_audit", {"plan_id": plan_id, "verdict": verdict}, region,
+                             "auditor", "audit", value, started, [], key=f"audit:{plan_id}",
+                             salt=hashlib.sha1(f"{verdict}|{value['note']}".encode()).hexdigest()[:8])
+        return {**value, "finding_id": f, "tool_call_id": tc, "recorded": True}
+
+    def inject_scenario(self, case_id: str, kind: str, seed: int = 0) -> dict:
+        """Evaluation helper: add one late batch of a given kind. 'bypass' is inject_late_transfers; 'dead_end' adds a
+        recipient with no onward transfers; 'unrelated' adds a transfer between two new accounts; 'old' adds a
+        transfer from the alerted account dated before the window."""
+        if kind == "bypass":
+            return self.inject_late_transfers(case_id)
+        case = self._case(case_id)
+        batch = self.latest_batch() + 1
+        tag = _det("S", case_id, batch, kind)[2:].upper()
+        a, b = f"000000:S{tag[:6]}1", f"000000:S{tag[:6]}2"
+        t_to = int(case["alert_ts"])
+        if kind == "dead_end":
+            rows, ts, accts = [{"s": case["origin"], "d": a}], t_to - 60, [a]
+        elif kind == "old":
+            rows, ts, accts = [{"s": case["origin"], "d": a}], t_to - int(case["window_min"]) - 1440, [a]
+        elif kind == "unrelated":
+            rows, ts, accts = [{"s": a, "d": b}], t_to - 60, [a, b]
+        else:
+            raise ToolError("BAD_ARGUMENT", f"unknown scenario {kind!r}")
+        self._write("CREATE (:Batch {id: $b, loaded_at: $now, simulated: true})", {"b": batch, "now": int(time.time())})
+        self._write("UNWIND $ids AS i MERGE (:Account {id: i})", {"ids": accts})
+        self._write(
+            "UNWIND $rows AS r MATCH (a:Account {id: r.s}), (b:Account {id: r.d}) "
+            "CREATE (a)-[:TRANSFER {tid: $tid, ts: $ts, amt: 100000, cur: 'US Dollar', fmt: 'ACH', batch: $b}]->(b)",
+            {"rows": rows, "ts": ts, "b": batch, "tid": 900_000_000 + batch * 10})
+        return {"data_version": batch, "scenario": kind}

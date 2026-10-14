@@ -26,7 +26,8 @@ def test_tools_are_listed_and_work_through_mcp():
     async def go():
         async with Client(mcp) as c:
             names = {t.name for t in await c.list_tools()}
-            assert names == {"open_case", "flow", "freeze_plan", "verify_plan", "resume_case", "refresh_case", "explain_finding"}
+            assert names == {"open_case", "flow", "freeze_plan", "verify_plan", "resume_case", "refresh_case", "explain_finding",
+                             "audit_checks", "submit_audit"}
             case = _payload(await c.call_tool("open_case", {"account": example["account"], "alert_ts": example["alert_ts"]}))
             assert case["has_route_to_perimeter"] is True
             plan = _payload(await c.call_tool("freeze_plan", {"case_id": case["case_id"]}))

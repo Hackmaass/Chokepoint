@@ -81,6 +81,18 @@ def resume_case(case_id: str) -> dict:
 
 
 @mcp.tool
+def audit_checks(plan_id: str) -> dict:
+    """Deterministic checks on a stored freeze plan (verified, current, actionable, no routes left, ...). Read-only."""
+    return tb().call("audit_checks", {"plan_id": plan_id})
+
+
+@mcp.tool
+def submit_audit(plan_id: str, verdict: Annotated[str, Field(pattern="^(agree|disagree|needs_review)$")], note: str = "") -> dict:
+    """Record an audit verdict on a plan in the shared graph; 'agree' is refused while a blocking check fails."""
+    return tb().call("submit_audit", {"plan_id": plan_id, "verdict": verdict, "note": note})
+
+
+@mcp.tool
 def refresh_case(case_id: str) -> dict:
     """After newer data arrived: re-run only the findings that used accounts with new transfers, and report what changed."""
     return tb().call("refresh_case", {"case_id": case_id})

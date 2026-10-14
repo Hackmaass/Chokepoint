@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable
 
 from .llm import LLMClient, LLMError
 from .toolbox import Toolbox
@@ -75,6 +75,36 @@ transfers; synthetic data). Do not say the plan "finds hidden accounts".
 Write amounts in dollars from usd_cents / 100."""
 
 
+AUDITOR_SPECS = [
+    {"name": "audit_checks",
+     "description": "Run the deterministic checks on a stored freeze plan: verified, current, actionable, no routes "
+                    "left, frozen accounts on a route, not worse than the rule of thumb. Read-only.",
+     "parameters": {"type": "object", "required": ["plan_id"], "additionalProperties": False,
+                    "properties": {"plan_id": {"type": "string"}}}},
+    {"name": "explain_finding",
+     "description": "Show the receipt behind a finding: tool run, parameters, data version and solver.",
+     "parameters": {"type": "object", "required": ["finding_id"], "additionalProperties": False,
+                    "properties": {"finding_id": {"type": "string"}}}},
+    {"name": "resume_case",
+     "description": "Read the case and all its stored findings, including earlier audits.",
+     "parameters": {"type": "object", "required": ["case_id"], "additionalProperties": False,
+                    "properties": {"case_id": {"type": "string"}}}},
+    {"name": "submit_audit",
+     "description": "Record your verdict on the plan in the shared graph. You cannot agree while a blocking check fails.",
+     "parameters": {"type": "object", "required": ["plan_id", "verdict", "note"], "additionalProperties": False,
+                    "properties": {"plan_id": {"type": "string"},
+                                   "verdict": {"type": "string", "enum": ["agree", "disagree", "needs_review"]},
+                                   "note": {"type": "string", "description": "at most 60 words, naming the checks"}}}},
+]
+
+AUDITOR_PROMPT = """You are the auditor in a two-agent team. The investigator agent has stored a case and a freeze plan \
+in a shared graph. You can see only what is stored there, not the investigator's messages or reasoning.
+Given a plan id: call audit_checks, read the receipt with explain_finding or the case with resume_case if you need \
+more, then call submit_audit once with a verdict (agree, disagree or needs_review) and a note of at most 60 words \
+that names the checks you relied on. Never agree when a blocking check fails. Do not state numbers that did not come \
+from a tool. After submit_audit succeeds, reply with one sentence for the user."""
+
+
 @dataclass
 class AgentRun:
     task: str
@@ -101,7 +131,8 @@ def summarize(result: dict) -> str:
 
 
 def run_agent(task: str, toolbox: Toolbox, llm: LLMClient, max_steps: int = 10,
-              on_event: Callable[[dict], None] | None = None) -> AgentRun:
+              on_event: Callable[[dict], None] | None = None, system: str = SYSTEM_PROMPT,
+              specs: list[dict] | None = None) -> AgentRun:
     run = AgentRun(task=task)
 
     def emit(ev: dict) -> None:
@@ -110,8 +141,8 @@ def run_agent(task: str, toolbox: Toolbox, llm: LLMClient, max_steps: int = 10,
         if on_event:
             on_event(ev)
 
-    tools = [{"type": "function", "function": t} for t in TOOL_SPECS]
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": task}]
+    tools = [{"type": "function", "function": t} for t in (specs or TOOL_SPECS)]
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": task}]
     emit({"type": "start", "task": task})
     for step in range(1, max_steps + 1):
         run.steps = step
@@ -171,6 +202,10 @@ def answer_card(run: AgentRun) -> dict:
                             "perimeter_hops": r["perimeter_hops"], "lambda_weight": r["lambda_weight"],
                             "before_usd_cents": r["money_movable_before_usd_cents"],
                             "chokepoint": r["chokepoint_plan"], "rule_of_thumb": r["rule_of_thumb_plan"]}
+        elif name == "audit_checks":
+            card["audit_checks"] = {"checks": r["checks"], "blocking_failed": r["blocking_failed"]}
+        elif name == "submit_audit":
+            card["audit"] = {k: r[k] for k in ("plan_id", "verdict", "note", "blocking_failed", "passed", "finding_id")}
         elif name == "verify_plan":
             card["verification"] = {k: r[k] for k in ("plan_id", "verified", "statement", "method",
                                                       "perimeter_reachable_before", "perimeter_reachable_after")}

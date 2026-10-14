@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from redis.exceptions import ResponseError
 
 from chokepoint.db import connect
 
@@ -73,5 +74,5 @@ def test_g2_docs_toy_example(graph):
 
 def test_g8_readonly_rejects_write(graph):
     graph.query("CREATE (:T {id:'x'})")
-    with pytest.raises(Exception):
+    with pytest.raises(ResponseError):
         graph.ro_query("CREATE (:T {id:'y'})")

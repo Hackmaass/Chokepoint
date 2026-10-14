@@ -17,7 +17,6 @@ import os
 import threading
 import time
 import uuid
-from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,7 +24,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .agent import answer_card, run_agent
+from .agent import AUDITOR_PROMPT, AUDITOR_SPECS, answer_card, run_agent
 from .config import PROJECT_ROOT
 from .db import connect
 from .llm import REPLAY_DIR, LLMClient
@@ -33,7 +32,8 @@ from .toolbox import Toolbox
 
 EXAMPLES = PROJECT_ROOT / "examples" / "examples.json"
 MAX_CONCURRENT_RUNS = 2
-TOOLS = {"open_case", "flow", "freeze_plan", "verify_plan", "resume_case", "explain_finding", "refresh_case"}
+TOOLS = {"open_case", "flow", "freeze_plan", "verify_plan", "resume_case", "explain_finding", "refresh_case",
+         "audit_checks"}
 DEMO = os.environ.get("DEMO_MODE", "1") != "0"  # simulated late transfers and reset (synthetic edits only)
 
 app = FastAPI(title="Chokepoint", version="0.1.0")
@@ -54,6 +54,7 @@ def toolbox() -> Toolbox:
 class RunRequest(BaseModel):
     task: str = Field(min_length=5, max_length=600)
     mode: str = Field(default="live", pattern="^(live|replay)$")
+    role: str = Field(default="investigator", pattern="^(investigator|auditor)$")
 
 
 @app.get("/api/health")
@@ -82,7 +83,7 @@ def demo_late_transfers(case_id: str) -> dict:
     try:
         return toolbox().inject_late_transfers(case_id)
     except Exception as e:
-        raise HTTPException(400, getattr(e, "message", str(e)))
+        raise HTTPException(400, getattr(e, "message", str(e))) from e
 
 
 @app.post("/api/demo/reset")
@@ -108,14 +109,15 @@ def graph(case_id: str, plan_id: str | None = None) -> dict:
         return toolbox().graph_view(case_id, plan_id)
     except Exception as e:  # typed tool errors and unknown ids
         code = getattr(e, "code", "ERROR")
-        raise HTTPException(404 if code.startswith("UNKNOWN") else 400, getattr(e, "message", str(e)))
+        raise HTTPException(404 if code.startswith("UNKNOWN") else 400, getattr(e, "message", str(e))) from e
 
 
 def _execute(run_id: str, req: RunRequest) -> None:
     st = _runs[run_id]
     try:
         llm = LLMClient(mode=req.mode, cache_dir=REPLAY_DIR if req.mode == "replay" else None)
-        run = run_agent(req.task, toolbox(), llm, on_event=lambda ev: st["events"].append(ev))
+        extra = {"system": AUDITOR_PROMPT, "specs": AUDITOR_SPECS} if req.role == "auditor" else {}
+        run = run_agent(req.task, toolbox(), llm, on_event=lambda ev: st["events"].append(ev), **extra)
         st["events"].append({"type": "card", "card": answer_card(run), "stopped": run.stopped,
                              "cached_calls": run.cached_calls, "mode": req.mode, "t": time.time()})
     except Exception as e:  # never leave a stream hanging
