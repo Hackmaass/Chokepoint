@@ -138,7 +138,7 @@ graph TD
 
 - **Agent**: a manual tool loop with the decision rules in the system prompt; recorded runs can be replayed (the UI labels them). Model: `nvidia/nemotron-3-super-120b-a12b` through NVIDIA's free OpenAI-compatible endpoint, behind a provider-neutral client with an app-side rate limit.
 - **Modes**: live agent, replay of saved runs, tools only (no model).
-- **MCP**: `python -m chokepoint.mcp_server` exposes the same six tools over stdio (or token-protected HTTP).
+- **MCP**: `python -m chokepoint.mcp_server` exposes the same nine tools (open_case, flow, freeze_plan, verify_plan, resume_case, refresh_case, explain_finding, audit_checks, submit_audit) over stdio, or token-protected HTTP with `--http`.
 
 ## Run it
 
@@ -161,7 +161,19 @@ cd web && npm ci && npm run dev                      # UI at http://localhost:51
 
 Everything in containers: `docker compose --profile seed run --rm seed` then `docker compose --profile app up -d --build` (UI and API on `127.0.0.1:8080`; put a TLS reverse proxy in front for a public host).
 
-**Tests**: `uv run pytest` (needs FalkorDB and the loaded data; 30 tests, one strict xfail that tracks the FalkorDB bug). **Reproduce the evaluation**: `scripts/g7_pilot2.py --split test --frac 0.5` and `scripts/g7_report2.py` (protocol in `docs/pilot-protocol.md`). **Agent evaluation**: `scripts/eval_agent.py`.
+**Tests**: `uv run pytest` (needs FalkorDB and the loaded data; 45 tests plus one strict `xfail` that tracks the FalkorDB bug, about a minute). Some tests edit the demo data (simulated late batches) and reset it afterwards.
+
+**Reproduce the numbers** (each script's docstring has the protocol; results are written to `scratch/`):
+
+| Claim | Command | Write-up |
+|---|---|---|
+| plan quality vs simple rules, held-out | `scripts/g7_pilot2.py --split test --frac 0.5`, then `scripts/g7_report2.py` | `docs/pilot-results.md` |
+| accounts needed to guarantee a cut; latency | `scripts/eval_budget_latency.py` | `docs/guarantee-and-latency.md` |
+| the live agent | `scripts/eval_agent.py --split test` (and `--split dev`) | `docs/agent-eval.md` |
+| late data (ripple) | `scripts/eval_ripple.py --limit 40` | `docs/ripple-eval.md` |
+| FalkorDB `algo.maxFlow` defect | `tests/test_cut_oracle.py` | `docs/falkordb-maxflow-findings.md` |
+
+**Deploy**: [`docs/deploy.md`](docs/deploy.md). **Demo script**: [`docs/demo-script.md`](docs/demo-script.md).
 
 ## Data
 
