@@ -20,6 +20,7 @@ dev = [
   "pytest>=8",
   "hypothesis>=6",
   "ruff>=0.6",
+  "pytest-timeout>=2.4.0",
 ]
 
 [build-system]
@@ -31,6 +32,7 @@ packages = ["src/chokepoint"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+timeout = 240
 markers = [
   "db: needs a running FalkorDB (docker compose up -d falkordb)",
 ]
