@@ -24,7 +24,7 @@ function styles(): StylesheetJson {
     { selector: 'node', style: { width: 10, height: 10, 'background-color': muted, 'border-width': 2, 'border-color': surface } },
     { selector: 'node[role="origin"]', style: { shape: 'diamond', width: 26, height: 26, 'background-color': ink, label: 'alerted', 'font-size': 11, color: ink, 'text-valign': 'bottom', 'text-margin-y': 6 } },
     { selector: 'node[role="perimeter"]', style: { shape: 'square', width: 11, height: 11, 'background-color': exit } },
-    { selector: 'node[role="frozen"]', style: { shape: 'ellipse', width: 24, height: 24, 'background-color': frozen, 'background-image': X_ICON, 'background-fit': 'contain', 'border-color': surface, 'border-width': 2 } },
+    { selector: 'node[role="frozen"]', style: { shape: 'ellipse', width: 24, height: 24, 'background-color': frozen, 'background-image': X_ICON, 'background-fit': 'contain', 'border-color': surface, 'border-width': 2, label: 'data(short)', 'font-size': 10, color: ink, 'text-valign': 'bottom', 'text-margin-y': 5, 'text-background-color': surface, 'text-background-opacity': 0.85, 'text-background-padding': '2px' } },
     { selector: 'node[role="rule"]', style: { shape: 'ellipse', width: 20, height: 20, 'background-color': surface, 'border-color': frozen, 'border-width': 2, 'border-style': 'dashed' } },
     { selector: 'node:selected', style: { 'border-color': ink, 'border-width': 3 } },
     { selector: 'edge', style: { width: 1, 'line-color': hair, 'target-arrow-color': hair, 'target-arrow-shape': 'triangle', 'arrow-scale': 0.7, 'curve-style': 'bezier', opacity: 0.8 } },
@@ -49,7 +49,7 @@ export default function Graph({ view, showRule, verified, theme }: Props) {
       container: host.current,
       elements: [
         ...view.nodes.map((n) => ({
-          data: { id: n.id, label: n.label, role: !showRule && n.role === 'rule' ? 'other' : n.role, depth: n.depth },
+          data: { id: n.id, label: n.label, short: n.id.length > 12 ? `…${n.id.slice(-9)}` : n.id, role: !showRule && n.role === 'rule' ? 'other' : n.role, depth: n.depth },
         })),
         ...view.edges.map((e, i) => ({
           data: {
@@ -66,7 +66,6 @@ export default function Graph({ view, showRule, verified, theme }: Props) {
       layout: { name: 'breadthfirst', directed: true, roots: origin ? [origin] : undefined, spacingFactor: 1.15, padding: 24, animate: false } as cytoscape.LayoutOptions,
       minZoom: 0.2,
       maxZoom: 3,
-      wheelSensitivity: 0.3,
     })
     const tip = document.getElementById('graph-tip')
     cy.current.on('mouseover', 'node', (ev) => {

@@ -87,13 +87,59 @@ export type GraphView = {
 
 export type CaseRow = { case_id: string; alerted_account: string; alert_ts: string; perimeter_hops: number; findings: number }
 
+export class ApiError extends Error {
+  status: number
+  code: string
+  hint: string
+
+  constructor(message: string, status: number, code: string, hint: string) {
+    super(message)
+    this.status = status
+    this.code = code
+    this.hint = hint
+  }
+}
+
+/** Every API error is {"error": {code, message, hint?}}; turn a failed response into one readable ApiError. */
+async function toApiError(r: Response): Promise<ApiError> {
+  let code = 'ERROR'
+  let message = `The server answered ${r.status}.`
+  let hint = ''
+  try {
+    const e = (await r.json()).error ?? {}
+    code = e.code ?? code
+    message = e.message ?? message
+    hint = e.hint ?? ''
+  } catch {
+    /* not JSON (a proxy error page, for example) */
+  }
+  if (r.status === 429) message = 'Too many requests. Wait a few seconds and try again.'
+  if (r.status === 502 || r.status === 504) message = 'The server is not answering. It may be restarting.'
+  return new ApiError(message, r.status, code, hint)
+}
+
+/** One sentence for the screen, for an ApiError, a network failure or anything else. */
+export function errorText(e: unknown): string {
+  if (e instanceof ApiError) return [e.message, e.hint].filter(Boolean).join(' ')
+  if (e instanceof TypeError) return 'Cannot reach the server. Check your connection and try again.'
+  return String(e instanceof Error ? e.message : e)
+}
+
 async function j<T>(r: Response): Promise<T> {
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`)
+  if (!r.ok) throw await toApiError(r)
   return r.json() as Promise<T>
 }
 
+export type Ready = { ready: boolean; state: string; message?: string; latest_data_version?: number }
+export type Health = { ok: boolean; version: string; demo: boolean; live_available: boolean }
+
 export const api = {
-  health: () => fetch('/api/health').then((r) => j<{ ok: boolean; latest_data_version: number; demo: boolean }>(r)),
+  health: () => fetch('/api/health').then((r) => j<Health>(r)),
+  /** Readiness never throws: "the server is down" is a state the UI shows, not an exception. */
+  ready: (): Promise<Ready> =>
+    fetch('/api/ready')
+      .then((r) => r.json() as Promise<Ready>)
+      .catch(() => ({ ready: false, state: 'unreachable', message: 'The server is not reachable.' })),
   post: (path: string) => fetch(path, { method: 'POST' }).then((r) => j<Record<string, any>>(r)),
   examples: () => fetch('/api/examples').then((r) => j<Example[]>(r)),
   cases: () => fetch('/api/cases').then((r) => j<CaseRow[]>(r)),
@@ -107,6 +153,54 @@ export const api = {
     fetch('/api/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task, mode, role }) }).then((r) =>
       j<{ run_id: string }>(r),
     ),
+}
+
+type StreamHandlers = {
+  event: (e: TraceEvent) => void
+  end: () => void
+  /** The stream died for good (server gone, run unknown): the run's result cannot be trusted to be complete. */
+  lost: (message: string) => void
+  /** true while the browser is retrying a dropped connection (it resumes from the last event it saw). */
+  reconnecting: (on: boolean) => void
+}
+
+const RECONNECT_GIVE_UP_MS = 20_000
+
+/** Follow a run's event stream. The server numbers events, so a dropped connection resumes without repeats. */
+export function openRunStream(runId: string, on: StreamHandlers): EventSource {
+  const es = new EventSource(`/api/runs/${runId}/events`)
+  let ended = false
+  let giveUp: ReturnType<typeof setTimeout> | undefined
+  const stop = () => {
+    clearTimeout(giveUp)
+    giveUp = undefined
+  }
+  es.onmessage = (m) => {
+    stop()
+    on.reconnecting(false)
+    on.event(JSON.parse(m.data) as TraceEvent)
+  }
+  es.addEventListener('end', () => {
+    ended = true
+    stop()
+    es.close()
+    on.end()
+  })
+  es.onerror = () => {
+    if (ended) return
+    if (es.readyState === EventSource.CLOSED) {
+      stop()
+      on.lost('The connection to the server was lost before the run finished. Start it again.')
+      return
+    }
+    on.reconnecting(true)
+    giveUp ??= setTimeout(() => {
+      es.close()
+      on.reconnecting(false)
+      on.lost('The server stopped answering before the run finished. Start it again.')
+    }, RECONNECT_GIVE_UP_MS)
+  }
+  return es
 }
 
 export const usd = (cents: number) =>

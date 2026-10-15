@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Graph from './Graph'
-import { api, buildCard, STEP_NAMES, usd, usd2, type Card, type CaseRow, type Example, type GraphView, type TraceEvent } from './api'
+import { api, buildCard, errorText, openRunStream, STEP_NAMES, usd, usd2, type Card, type CaseRow, type Example, type GraphView, type Ready, type TraceEvent } from './api'
 
 type Mode = 'live' | 'replay' | 'tools'
 type Tab = 'steps' | 'compare' | 'receipt' | 'changes' | 'audit'
@@ -21,12 +21,28 @@ function fmtSummary(s: Record<string, any>): string {
   return `${s.accounts} accounts · ${s.perimeter_accounts} on the perimeter`
 }
 
+const MODE_NOTES: Record<string, string> = {
+  live: 'The language model chooses the tools and writes the summary. Takes about a minute.',
+  replay: 'Plays back a saved agent run for this example alert: instant, no model call.',
+  tools: 'Runs the same four tools directly, with no language model: instant and deterministic.',
+}
+
+function friendlyRunError(m: string): string {
+  if (m.startsWith('no recorded answer'))
+    return 'There is no saved run that matches the current data. This happens for a custom alert, or after simulated late transfers have changed the data. Use Tools only, or reset the demo data.'
+  return m
+}
+
 export default function App() {
   const [examples, setExamples] = useState<Example[]>([])
   const [recent, setRecent] = useState<CaseRow[]>([])
   const [account, setAccount] = useState('')
   const [alertTs, setAlertTs] = useState('')
-  const [mode, setMode] = useState<Mode>('live')
+  const [mode, setMode] = useState<Mode>('replay')
+  const [server, setServer] = useState<Ready>({ ready: false, state: 'checking' })
+  const [liveAvailable, setLiveAvailable] = useState(true)
+  const [reconnecting, setReconnecting] = useState(false)
+  const [copied, setCopied] = useState(false)
   const [events, setEvents] = useState<TraceEvent[]>([])
   const [running, setRunning] = useState(false)
   const [error, setError] = useState('')
@@ -34,6 +50,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('steps')
   const [showRule, setShowRule] = useState(false)
   const [theme, setTheme] = useState(loadTheme())
+  const effectiveTheme = theme === 'system' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme
   const [receipt, setReceipt] = useState<Record<string, any> | null>(null)
   const [resumed, setResumed] = useState(false)
   const [resumedCard, setResumedCard] = useState<Card | null>(null)
@@ -43,6 +60,12 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [audit, setAudit] = useState<{ checks?: any[]; verdict?: string; note?: string; blocking?: string[]; running?: boolean; error?: string } | null>(null)
   const source = useRef<EventSource | null>(null)
+  const exSel = examples.findIndex((x) => x.account === account && x.alert_ts === alertTs)
+
+  // Saved runs exist only for the example alerts: a custom alert uses Tools only instead of failing.
+  const replayUnavailable = examples.length > 0 && exSel < 0
+  const runMode: Mode = mode === 'replay' && replayUnavailable ? 'tools' : mode
+  const notice = runMode !== mode ? 'Saved runs exist only for the example alerts, so this custom alert uses Tools only.' : ''
 
   useEffect(() => {
     api.examples().then((x) => {
@@ -51,9 +74,29 @@ export default function App() {
         setAccount(x[0].account)
         setAlertTs(x[0].alert_ts)
       }
-    }).catch(() => setError('The API is not reachable. Start it with: uv run uvicorn chokepoint.api:app'))
-    api.cases().then(setRecent).catch(() => undefined)
-    api.health().then((h) => setDemo(h.demo)).catch(() => undefined)
+    }).catch((e) => setError(errorText(e)))
+    api.health().then((h) => {
+      setDemo(h.demo)
+      setLiveAvailable(h.live_available)
+    }).catch(() => undefined)
+  }, [])
+
+  // Poll readiness until the database has loaded the graph (about a minute after a restart), then stop.
+  useEffect(() => {
+    let stop = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const poll = async () => {
+      const r = await api.ready()
+      if (stop) return
+      setServer(r)
+      if (r.ready) api.cases().then(setRecent).catch(() => undefined)
+      else timer = setTimeout(poll, 3000)
+    }
+    poll()
+    return () => {
+      stop = true
+      clearTimeout(timer)
+    }
   }, [])
 
   useEffect(() => {
@@ -73,6 +116,7 @@ export default function App() {
   )
   const card: Card = useMemo(() => (resumedCard && events.length === 0 ? resumedCard : buildCard(results)), [results, resumedCard, events.length])
   const finalText = events.find((e) => e.type === 'final')?.text
+  const runError = events.find((e) => e.type === 'error')?.message
   const unmatched = events.find((e) => e.type === 'final')?.faithful
   const cachedRun = events.some((e) => e.cached) || events.find((e) => e.type === 'card')?.mode === 'replay'
   const caseId = card.case?.case_id
@@ -89,7 +133,11 @@ export default function App() {
 
   useEffect(() => {
     if (!caseId) return
-    api.graph(caseId, planId).then(setView).catch(() => undefined)
+    let stale = false // the graph is fetched first without and then with the plan; a late answer must not win
+    api.graph(caseId, planId).then((v) => !stale && setView(v)).catch(() => undefined)
+    return () => {
+      stale = true
+    }
   }, [caseId, planId])
 
   const steps = useMemo(() => {
@@ -144,30 +192,31 @@ export default function App() {
     setReceipt(null)
     setResumed(false)
     setResumedCard(null)
+    setReconnecting(false)
     setTab('steps')
     setRunning(true)
     try {
-      if (mode === 'tools') {
+      if (runMode === 'tools') {
         await runTools()
         setRunning(false)
         return
       }
       const task = `Account ${account} was alerted at ${alertTs}. Investigate and recommend which accounts to freeze.`
-      const { run_id } = await api.startRun(task, mode)
-      const es = new EventSource(`/api/runs/${run_id}/events`)
-      source.current = es
-      es.onmessage = (m) => push(JSON.parse(m.data) as TraceEvent)
-      es.addEventListener('end', () => {
-        es.close()
-        setRunning(false)
-        api.cases().then(setRecent).catch(() => undefined)
+      const { run_id } = await api.startRun(task, runMode)
+      source.current = openRunStream(run_id, {
+        event: push,
+        end: () => {
+          setRunning(false)
+          api.cases().then(setRecent).catch(() => undefined)
+        },
+        lost: (message) => {
+          setError(message)
+          setRunning(false)
+        },
+        reconnecting: setReconnecting,
       })
-      es.onerror = () => {
-        es.close()
-        setRunning(false)
-      }
     } catch (e) {
-      setError(String(e).replace(/^Error: /, ''))
+      setError(errorText(e))
       setRunning(false)
     }
   }
@@ -179,9 +228,15 @@ export default function App() {
     setView(null)
     setReceipt(null)
     setError('')
-    const r = await api.tool('resume_case', { case_id: id })
+    let r: Record<string, any>
+    try {
+      r = await api.tool('resume_case', { case_id: id })
+    } catch (e) {
+      setError(errorText(e))
+      return
+    }
     if (r.error) {
-      setError(`${r.error.code}: ${r.error.message}`)
+      setError(`${r.error.message} ${r.error.hint ?? ''}`.trim())
       return
     }
     setAccount(r.alerted_account)
@@ -195,7 +250,7 @@ export default function App() {
     ]
     if (flowF) synth.push({ tool: 'flow', result: { max_movable_usd_cents: flowF.summary.max_movable_usd_cents } })
     if (planF) {
-      const ex = await api.tool('explain_finding', { finding_id: planF.finding_id })
+      const ex = await api.tool('explain_finding', { finding_id: planF.finding_id }).catch(() => ({}) as Record<string, any>)
       synth.push({ tool: 'freeze_plan', result: { ...ex.result, plan_id: planF.plan_id, finding_id: planF.finding_id } })
       if (verF) synth.push({ tool: 'verify_plan', result: { ...verF.summary, plan_id: planF.plan_id, method: 'see receipt', perimeter_reachable_before: 0, perimeter_reachable_after: 0 } })
     }
@@ -212,7 +267,23 @@ export default function App() {
       await api.post(`/api/demo/late-transfers/${caseId}`)
       checkInfo(caseId)
     } catch (e) {
-      setError(String(e).replace(/^Error: /, ''))
+      setError(errorText(e))
+    }
+    setBusy(false)
+  }
+
+  async function resetDemo() {
+    setBusy(true)
+    try {
+      await api.post('/api/demo/reset')
+      setError('')
+      setEvents([])
+      setView(null)
+      setInfo(null)
+      setRefresh(null)
+      api.cases().then(setRecent).catch(() => undefined)
+    } catch (e) {
+      setError(errorText(e))
     }
     setBusy(false)
   }
@@ -220,11 +291,15 @@ export default function App() {
   async function rerunAffected() {
     if (!caseId) return
     setBusy(true)
-    const r = await api.tool('refresh_case', { case_id: caseId })
-    if (r.error) setError(`${r.error.code}: ${r.error.message}`)
-    else {
-      setRefresh(r)
-      await resume(caseId, 'changes')
+    try {
+      const r = await api.tool('refresh_case', { case_id: caseId })
+      if (r.error) setError(`${r.error.message} ${r.error.hint ?? ''}`.trim())
+      else {
+        setRefresh(r)
+        await resume(caseId, 'changes')
+      }
+    } catch (e) {
+      setError(errorText(e))
     }
     setBusy(false)
   }
@@ -234,44 +309,52 @@ export default function App() {
     setAudit({ running: true })
     setTab('audit')
     try {
-      if (mode === 'tools') {
+      if (runMode === 'tools') {
         const r = await api.tool('audit_checks', { plan_id: plan.plan_id })
         setAudit(r.error ? { error: `${r.error.code}: ${r.error.message}` } : { checks: r.checks, blocking: r.blocking_failed })
         return
       }
-      const { run_id } = await api.startRun(`Audit plan ${plan.plan_id} for case ${caseId}.`, mode, 'auditor')
-      const es = new EventSource(`/api/runs/${run_id}/events`)
-      es.onmessage = (m) => {
-        const e = JSON.parse(m.data) as TraceEvent
-        if (e.type === 'tool_result' && e.tool === 'audit_checks' && e.result)
-          setAudit((a) => ({ ...a, checks: e.result!.checks, blocking: e.result!.blocking_failed, running: true }))
-        if (e.type === 'tool_result' && e.tool === 'submit_audit' && e.result)
-          setAudit((a) => ({ ...a, ...(e.result!.error ? { error: `${e.result!.error.code}: ${e.result!.error.message}` } : { verdict: e.result!.verdict, note: e.result!.note }) }))
-        if (e.type === 'error') setAudit((a) => ({ ...a, error: e.message, running: false }))
-      }
-      es.addEventListener('end', () => {
-        es.close()
-        setAudit((a) => ({ ...a, running: false }))
+      const { run_id } = await api.startRun(`Audit plan ${plan.plan_id} for case ${caseId}.`, runMode, 'auditor')
+      openRunStream(run_id, {
+        event: (e) => {
+          if (e.type === 'tool_result' && e.tool === 'audit_checks' && e.result)
+            setAudit((a) => ({ ...a, checks: e.result!.checks, blocking: e.result!.blocking_failed, running: true }))
+          if (e.type === 'tool_result' && e.tool === 'submit_audit' && e.result)
+            setAudit((a) => ({ ...a, ...(e.result!.error ? { error: `${e.result!.error.code}: ${e.result!.error.message}` } : { verdict: e.result!.verdict, note: e.result!.note }) }))
+          if (e.type === 'error') setAudit((a) => ({ ...a, error: friendlyRunError(e.message ?? ''), running: false }))
+        },
+        end: () => setAudit((a) => ({ ...a, running: false })),
+        lost: (message) => setAudit((a) => ({ ...a, error: message, running: false })),
+        reconnecting: () => undefined,
       })
-      es.onerror = () => {
-        es.close()
-        setAudit((a) => ({ ...a, running: false }))
-      }
     } catch (e) {
-      setAudit({ error: String(e).replace(/^Error: /, '') })
+      setAudit({ error: errorText(e) })
     }
   }
 
   async function loadReceipt() {
     if (!card.plan) return
-    setReceipt(await api.tool('explain_finding', { finding_id: card.plan.finding_id }))
+    try {
+      setReceipt(await api.tool('explain_finding', { finding_id: card.plan.finding_id }))
+    } catch (e) {
+      setError(errorText(e))
+    }
+  }
+
+  function copyPlan() {
+    if (!card.plan) return
+    navigator.clipboard?.writeText(card.plan.chokepoint.accounts.join('\n')).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }, () => setError('Copying was blocked by the browser. Select the accounts in the Compare tab instead.'))
   }
 
   const movable = card.movable_usd_cents ?? card.plan?.before_usd_cents
   const plan = card.plan
   const noRoute = card.case && !card.case.has_route_to_perimeter
   const verifiedLine = card.verification
-  const exSel = examples.findIndex((x) => x.account === account && x.alert_ts === alertTs)
+  const canRun = server.ready && !running && !!account && !!alertTs
+  const shownError = error || (runError ? friendlyRunError(runError) : '')
 
   return (
     <div className="app">
@@ -289,16 +372,31 @@ export default function App() {
         <span className="spacer" />
         <div className="seg" role="group" aria-label="How to run">
           {(['live', 'replay', 'tools'] as Mode[]).map((m) => (
-            <button key={m} aria-pressed={mode === m} onClick={() => setMode(m)}>
+            <button key={m} aria-pressed={runMode === m} disabled={m === 'live' && !liveAvailable}
+              title={m === 'live' && !liveAvailable ? 'This server has no language-model key, so live runs are off.' : MODE_NOTES[m]}
+              onClick={() => setMode(m)}>
               {m === 'live' ? 'Live agent' : m === 'replay' ? 'Replay' : 'Tools only'}
             </button>
           ))}
         </div>
         <span className="badge">Synthetic data</span>
-        <button className="btn small" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label="Toggle light and dark theme">
-          {theme === 'dark' ? 'Light' : 'Dark'}
+        <button className="btn small" onClick={() => setTheme(effectiveTheme === 'dark' ? 'light' : 'dark')} aria-label="Toggle light and dark theme">
+          {effectiveTheme === 'dark' ? 'Light' : 'Dark'}
         </button>
       </header>
+
+      {!server.ready && server.state !== 'checking' && (
+        <div className="status-bar" role="status">
+          <span className="ico" aria-hidden>…</span>
+          <span>
+            {server.state === 'loading'
+              ? 'The database is loading the transfer graph from disk. This takes about a minute after a restart; this page will be ready on its own.'
+              : server.state === 'dataset_missing'
+                ? (server.message ?? 'The transfer graph has not been loaded yet.')
+                : 'Cannot reach the server or the database. Retrying…'}
+          </span>
+        </div>
+      )}
 
       <main className="main">
         <section className="left" aria-label="Case and graph">
@@ -321,12 +419,20 @@ export default function App() {
                 <label htmlFor="ts">Alert time (UTC)</label>
                 <input id="ts" className="input mono" value={alertTs} onChange={(e) => setAlertTs(e.target.value)} />
               </div>
-              <button className="btn primary" disabled={running || !account || !alertTs} onClick={run}>
-                {running ? 'Investigating…' : mode === 'tools' ? 'Open case and build plan' : 'Investigate'}
+              <button className="btn primary" disabled={!canRun} onClick={run}>
+                {running ? 'Investigating…' : runMode === 'tools' ? 'Open case and build plan' : 'Investigate'}
               </button>
             </div>
-            {mode === 'replay' && <p className="note">Replay serves saved agent runs. If this alert has none, run it live once or use Tools only.</p>}
-            {error && <p className="error" role="alert">{error}</p>}
+            <p className="note">{notice ? `${notice} ` : ''}{MODE_NOTES[runMode]}</p>
+            {reconnecting && <p className="note" role="status">Connection interrupted, reconnecting…</p>}
+            {shownError && (
+              <p className="error" role="alert">
+                {shownError}
+                {demo && shownError.includes('reset the demo data') && (
+                  <button className="btn small" style={{ marginLeft: 12 }} disabled={busy} onClick={resetDemo}>Reset demo data</button>
+                )}
+              </p>
+            )}
           </div>
 
           <div className="panel canvas-wrap">
@@ -334,8 +440,17 @@ export default function App() {
               <Graph view={view} showRule={showRule} verified={verified} theme={theme} />
             ) : (
               <div className="canvas-empty">
-                <h2>Open a case to see where the money can go.</h2>
-                <p>An alerted account is one flagged for holding stolen money that has already started moving. Pick an example alert above, or enter an account and a time, then investigate.</p>
+                <h2>{running ? 'Opening the case…' : 'Where can the money still go?'}</h2>
+                <p>
+                  {running
+                    ? 'The map appears as soon as the case is open.'
+                    : 'An alerted account is one flagged for holding stolen money that has already started moving. Chokepoint looks for a small set of accounts that cuts every route the money could take in past transfers, then checks the result.'}
+                </p>
+                {!running && (
+                  <button className="btn primary" style={{ justifySelf: 'center' }} disabled={!canRun} onClick={run}>
+                    {server.ready ? (exSel >= 0 ? 'Run the example alert' : 'Investigate this alert') : 'Waiting for the database…'}
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -373,7 +488,10 @@ export default function App() {
                 </h1>
                 {plan && (
                   <>
-                    <p className="card-line">Freeze {plan.chokepoint.count} account{plan.chokepoint.count === 1 ? '' : 's'} to cut these routes</p>
+                    <div className="line-actions">
+                      <p className="card-line">Freeze {plan.chokepoint.count} account{plan.chokepoint.count === 1 ? '' : 's'} to cut these routes</p>
+                      <button className="btn small" onClick={copyPlan}>{copied ? 'Copied' : 'Copy account list'}</button>
+                    </div>
                     {verifiedLine ? (
                       <span className={`chip ${verifiedLine.verified ? 'good' : 'bad'}`}>
                         <span className="ico" aria-hidden>{verifiedLine.verified ? '✓' : '✕'}</span>
@@ -394,9 +512,14 @@ export default function App() {
             ) : noRoute ? (
               <div className="banner" role="note"><span className="ico" aria-hidden>!</span><span>No route to the perimeter in this window. Widen the window or check the account.</span></div>
             ) : (
-              <>
-                <h1 className="hero" style={{ color: 'var(--ink-secondary)' }}>—<small>Nothing run yet.</small></h1>
-              </>
+              <div>
+                <h2 className="card-line" style={{ margin: 0 }}>What you get</h2>
+                <ol className="how">
+                  <li><strong>The money at risk.</strong> How much could still move out of reach, from past transfers.</li>
+                  <li><strong>A freeze plan.</strong> A small set of accounts that cuts every route to the perimeter in past transfers, compared with a simple rule of thumb.</li>
+                  <li><strong>A check and a receipt.</strong> The plan is tested on a copy of the graph, and every result records how it was made.</li>
+                </ol>
+              </div>
             )}
             {finalText && (
               <p className="narrative">
@@ -482,7 +605,7 @@ export default function App() {
               {tab === 'audit' && plan && (
                 <div aria-live="polite">
                   <p className="note">A second agent, the auditor, sees only the case and plan stored in the graph, not the investigator's messages. It runs deterministic checks and records a verdict; code refuses an "agree" while a blocking check fails.</p>
-                  <button className="btn small" disabled={audit?.running} onClick={askAuditor}>{audit?.running ? 'Auditing…' : mode === 'tools' ? 'Run audit checks' : 'Ask the auditor'}</button>
+                  <button className="btn small" disabled={audit?.running} onClick={askAuditor}>{audit?.running ? 'Auditing…' : runMode === 'tools' ? 'Run audit checks' : 'Ask the auditor'}</button>
                   {audit?.error && <p className="error" role="alert">{audit.error}</p>}
                   {audit?.checks && (
                     <table style={{ marginTop: 12 }}>
@@ -553,7 +676,13 @@ export default function App() {
           </div>
         </aside>
       </main>
-      <footer className="footer">Synthetic data for demonstration. A freeze plan is a recommendation, not an instruction.</footer>
+      <footer className="footer">
+        Synthetic data for demonstration. A freeze plan is a recommendation, not an instruction.
+        <span className="footer-links">
+          <a href="/docs" target="_blank" rel="noreferrer">API</a>
+          <a href="https://github.com/Hackmaass/Chokepoint" target="_blank" rel="noreferrer">Source</a>
+        </span>
+      </footer>
     </div>
   )
 }

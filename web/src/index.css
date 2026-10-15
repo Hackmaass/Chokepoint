@@ -67,7 +67,7 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; line-height: 18px;
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* shell */
-.app { display: grid; grid-template-rows: 56px 1fr auto; height: 100%; min-height: 640px; }
+.app { display: grid; grid-template-rows: 56px auto 1fr auto; height: 100%; min-height: 640px; }
 .header {
   display: flex; align-items: center; gap: 16px; padding: 0 24px;
   border-bottom: 1px solid var(--line-hairline); background: var(--surface-page);
@@ -79,7 +79,22 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; line-height: 18px;
   min-height: 0;
 }
 @media (max-width: 1279px) { .main { grid-template-columns: minmax(480px, 1fr) 340px; } }
-@media (max-width: 899px) { .main { grid-template-columns: 1fr; overflow: auto; } .app { height: auto; } }
+@media (max-width: 899px) {
+  .main { grid-template-columns: 1fr; overflow: auto; }
+  .app { height: auto; grid-template-rows: auto auto 1fr auto; }
+  /* Phone order: the form, then the answer, then the map. The left column dissolves so its parts can be reordered. */
+  .main > .left { display: contents; }
+  .left > .panel:first-child { order: 0; }
+  .main > .right { order: 1; overflow: visible; }
+  .left > .canvas-wrap { order: 2; min-height: 320px; }
+  .left > div:last-child { order: 3; }
+}
+@media (max-width: 720px) {
+  .header { flex-wrap: wrap; gap: 8px 12px; padding: 8px 16px; height: auto; }
+  .header .field { flex: 1 1 100%; order: 5; }
+  .header .field select { width: 100%; }
+  .main, .footer { padding-left: 16px; padding-right: 16px; }
+}
 .footer { padding: 8px 24px 16px; color: var(--ink-secondary); font-size: 12px; line-height: 18px; }
 
 .panel {
@@ -163,3 +178,13 @@ td.num { text-align: right; }
 
 .error { color: var(--status-critical); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+.status-bar { display: flex; gap: 8px; align-items: center; padding: 8px 24px; background: var(--surface-1); border-bottom: 1px solid var(--line-hairline); color: var(--ink-secondary); }
+.status-bar:empty { display: none; }
+.how { margin: 12px 0 0; padding-left: 20px; display: grid; gap: 8px; color: var(--ink-secondary); }
+.how strong { color: var(--ink-primary); }
+.line-actions { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.footer-links { margin-left: 16px; display: inline-flex; gap: 12px; }
+.footer a { color: var(--ink-secondary); }
+.seg button:disabled { opacity: 0.45; cursor: not-allowed; }
+@media (max-width: 720px) { .status-bar { padding: 8px 16px; } .hero { font-size: 44px; line-height: 48px; } }
