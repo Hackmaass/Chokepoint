@@ -21,7 +21,10 @@ def _load_env_file(path: Path) -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, value = line.partition("=")
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+        value = value.strip()
+        if value[:1] not in ('"', "'"):
+            value = value.split(" #", 1)[0].strip()  # a trailing comment on an unquoted value
+        os.environ.setdefault(key.strip(), value.strip('"').strip("'"))
 
 
 def load_env() -> None:

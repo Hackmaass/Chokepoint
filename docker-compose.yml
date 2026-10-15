@@ -16,9 +16,18 @@ services:
       FALKORDB_ARGS: "MAX_QUEUED_QUERIES 50 TIMEOUT_MAX 60000 TIMEOUT_DEFAULT 3000 RESULTSET_SIZE 1000000"
       # RDB snapshots are off: the append-only file already persists the data, and a background save blocks
       # GRAPH.COPY (it needs a fork) for as long as it runs.
+      REDISCLI_AUTH: ${FALKORDB_PASSWORD:?set FALKORDB_PASSWORD}   # lets the healthcheck's redis-cli authenticate
       REDIS_ARGS: "--requirepass ${FALKORDB_PASSWORD:?set FALKORDB_PASSWORD} --appendonly yes --save \"\""
     volumes:
       - falkordb_data:/var/lib/falkordb/data
+    # Healthy only when the database answers PING, which it does not while it is still loading the graph from disk
+    # (about a minute for the full dataset). The app and the seed job wait for this.
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 10s
 
   # The app (API + built web UI). Start with:  docker compose --profile app up -d --build
   api:
@@ -26,7 +35,9 @@ services:
     build: .
     container_name: chokepoint-api
     restart: unless-stopped
-    depends_on: [falkordb]
+    depends_on:
+      falkordb:
+        condition: service_healthy
     environment:
       FALKORDB_HOST: falkordb
       FALKORDB_PORT: "6379"
@@ -34,6 +45,8 @@ services:
       NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
       LLM_RPM_LIMIT: ${LLM_RPM_LIMIT:-30}
       DEMO_MODE: ${DEMO_MODE:-1}   # set 0 on a public host: the demo endpoints edit the graph
+      TRUST_PROXY: ${TRUST_PROXY:-0}   # 1 behind Caddy or nginx, so rate limits see the real client address
+      CORS_ORIGINS: ${CORS_ORIGINS:-}   # only needed for a UI served from another origin
     ports:
       - "127.0.0.1:8080:8000"   # put a TLS reverse proxy (Caddy, nginx) in front for a public deployment
 
@@ -41,7 +54,11 @@ services:
   seed:
     profiles: ["seed"]
     build: .
-    depends_on: [falkordb]
+    depends_on:
+      falkordb:
+        condition: service_healthy
+    healthcheck:
+      disable: true   # the image's HTTP healthcheck is for the API, not for this one-off job
     environment:
       FALKORDB_HOST: falkordb
       FALKORDB_PORT: "6379"

@@ -46,3 +46,14 @@ def test_rate_limit_applies_per_client(client):
     finally:
         api.tool_limit.limit = 60
     assert codes[:5] == [200] * 5 and codes[5:] == [429] * 3
+
+
+def test_ready_and_unknown_case_use_http_errors(client):
+    r = client.get("/api/ready").json()
+    assert r["ready"] is True and r["latest_data_version"] >= 0
+    missing = client.get("/api/cases/c-doesnotexist")
+    assert missing.status_code == 404 and missing.json()["error"]["code"] == "NOT_FOUND"
+    assert client.get("/api/cases/c-doesnotexist/graph").status_code == 404
+    # tool endpoints keep their contract: a failed tool is a 200 whose body is the typed error
+    tool = client.post("/api/tools/resume_case", json={"case_id": "c-doesnotexist"})
+    assert tool.status_code == 200 and tool.json()["error"]["code"] == "UNKNOWN_CASE"
