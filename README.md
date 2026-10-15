@@ -163,7 +163,7 @@ cd web && npm ci && npm run dev                      # UI at http://localhost:51
 
 Everything in containers: `docker compose --profile seed run --rm seed` then `docker compose --profile app up -d --build` (UI and API on `127.0.0.1:8080`; put a TLS reverse proxy in front for a public host).
 
-**Tests**: `uv run pytest` (needs FalkorDB and the loaded data; 45 tests plus one strict `xfail` that tracks the FalkorDB bug, about a minute). Some tests edit the demo data (simulated late batches) and reset it afterwards.
+**Tests**: `uv run pytest` (needs FalkorDB and the loaded data; 65 tests plus one strict `xfail` that tracks the FalkorDB bug, under two minutes). Some tests edit the demo data (simulated late batches) and reset it afterwards.
 
 **Reproduce the numbers** (each script's docstring has the protocol; results are written to `scratch/`):
 
@@ -176,6 +176,32 @@ Everything in containers: `docker compose --profile seed run --rm seed` then `do
 | FalkorDB `algo.maxFlow` defect | `tests/test_cut_oracle.py` | `docs/falkordb-maxflow-findings.md` |
 
 **Deploy**: [`docs/deploy.md`](docs/deploy.md). **Demo script**: [`docs/demo-script.md`](docs/demo-script.md).
+
+## Operations
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/health` | liveness: the process is up (never touches the database) |
+| `GET /api/ready` | readiness: database reachable and graph loaded; `503` with `state` = `loading`, `db_unavailable`, `busy` or `dataset_missing` otherwise. The UI polls it and says what is happening. |
+| `POST /api/tools/{tool}` | one tool, no model. A failed tool is HTTP 200 with `{"error": {code, message, hint}}`, the same result the agent sees. |
+| `POST /api/runs`, `GET /api/runs/{id}/events` | an agent run and its event stream (server-sent events; numbered, so a dropped connection resumes without repeats) |
+| `GET /api/cases`, `/api/cases/{id}`, `/api/cases/{id}/graph` | saved cases; unknown ids are `404` |
+| `/docs` | interactive API reference |
+
+Every other error is `{"error": {code, message, hint?, request_id}}` with a matching HTTP status; every response carries `X-Request-ID`, which also appears in the server log line for that request.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `FALKORDB_HOST`, `FALKORDB_PORT`, `FALKORDB_PASSWORD` | `127.0.0.1`, `6379`, none | database |
+| `NVIDIA_API_KEY` (or `LLM_API_KEY`), `LLM_BASE_URL`, `LLM_MODEL`, `LLM_RPM_LIMIT` | free Nemotron, 30/min | live agent; with no key `/api/health` reports `live_available: false` and the UI turns the Live button off |
+| `DEMO_MODE` | `1` | simulated late transfers and reset; set `0` on a public host (see `docs/deploy.md`) |
+| `TOOL_RATE_LIMIT`, `RUN_RATE_LIMIT` | `60`, `8` per minute per client | sliding-window limits; `TRUST_PROXY=1` behind exactly one trusted proxy (Caddy, nginx), which must append the client address to `X-Forwarded-For`; the rightmost entry is used |
+| `RUN_TIMEOUT_S` | `300` | an agent run is stopped between steps after this long; at most 2 run at once |
+| `CORS_ORIGINS`, `LOG_LEVEL` | Vite dev server, `INFO` | |
+
+Run **one** uvicorn worker: runs and their event streams are held in that process's memory (a Redis-backed store would be needed for more). The container runs as an unprivileged user, has a health check, and the compose file starts the API only after the database answers `PING` (it does not while it is still loading the graph from disk, about a minute). If the database restarts under a running API the API stays up and recovers without a restart. Tested by restarting the database container while the API was running: `/api/ready` kept answering within about 3.5 s (`loading`, then `db_unavailable`, then ready after about 50 s) with no tracebacks in the log; data requests made while the database was down returned `503` with a retry hint or, if the connection had already been accepted, waited up to the 75 s database socket timeout before failing.
+
+**Browser smoke test** (replay mode, no model calls): build the UI, start the API, then `cd web && npm run e2e`. It checks the one-click first run, the loading, no-key and error states and the phone layout.
 
 ## Data
 
@@ -191,7 +217,11 @@ IBM "HI-Small" synthetic transactions (Altman et al., NeurIPS 2023 Datasets and 
 
 ## AI assistance disclosure
 
-An AI coding assistant (Claude Code) wrote most of the code, tests and documentation in this repository during the event, working on the author's instructions (much of it while the author was away). The author reviews the code and write-ups before submission and takes responsibility for the repository. A daily log is in [`docs/ai-work-log.md`](docs/ai-work-log.md). The agent inside the product uses a free NVIDIA Nemotron model; the numbers on its cards come from deterministic tools and its short summary is checked against them. **Pre-event preparation (Oct 14, before the event opened):** research and planning notes (ideas, a graph model sketch, evaluation design, checklists) containing no application code, and a short familiarisation with FalkorDB's documentation examples in a throwaway container (command line only, nothing saved). All code, data pipeline, tooling, interface, deployment and evaluation work in this repository was done after the event opened on Oct 15, 00:01 IST.
+Built with an AI coding assistant, Claude Code (Anthropic). The assistant wrote most of the code, tests and documentation. The author set the scope and constraints (solo entry, a free model, public synthetic data, application work only after the event opened), directs the work and is responsible for the submission. Usage by area and its review status are logged in [`docs/ai-work-log.md`](docs/ai-work-log.md).
+
+The agent inside the product is separate: it runs a free NVIDIA Nemotron model, and the numbers on its cards come from deterministic tools, with its short summary checked against them.
+
+**Before the event opened (Oct 14):** research and planning notes (ideas, a graph model sketch, evaluation design, checklists) with no application code, and a short look at FalkorDB's documentation examples in a throwaway container. All code, data pipeline, tooling, interface, deployment and evaluation work in this repository was done after the event opened on Oct 15, 00:01 IST.
 
 ## Licence
 

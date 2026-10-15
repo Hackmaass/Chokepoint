@@ -33,7 +33,8 @@ cp .env.example .env
 docker compose up -d falkordb
 docker compose --profile seed run --rm seed          # downloads the dataset (checksum verified) and loads FalkorDB
 docker compose --profile app up -d --build           # API and UI on 127.0.0.1:8080
-curl -s localhost:8080/api/health                    # {"ok":true,...}
+curl -s localhost:8080/api/health                    # liveness: {"ok":true,...}
+curl -s localhost:8080/api/ready                     # readiness: {"ready":true,...}; 503 while the graph loads
 ```
 
 ## TLS and a public URL
@@ -59,7 +60,13 @@ only their own receipts, and ids are derived from inputs so repeated requests do
 
 ## Operations
 
-- **Restart behaviour**: `restart: unless-stopped` on every service; FalkorDB reloads from its append-only file (about a minute for the full graph).
+- **Restart behaviour**: `restart: unless-stopped` on every service; FalkorDB reloads from its append-only file (about a minute for the full graph). Compose gates the API and the seed job on the database's health check, and `/api/ready` returns `503` with `state: loading` until the graph is in memory (the UI shows this and enables itself).
+- **One worker only**: agent runs and their event streams live in the API process's memory, so run a single uvicorn worker (the image does) and a single API container. Scaling out would first need a shared run store.
+- **Probes**: use `/api/health` for liveness (process up, no database call) and `/api/ready` for readiness (database loaded). The image's `HEALTHCHECK` uses the former, so a database restart does not make Docker kill a healthy API.
+- **Logs**: one line per API call with method, path, status, milliseconds and a request id (`X-Request-ID`, echoed to the client and quoted in error bodies), plus one line per tool call and per agent run. Set `LOG_LEVEL`. Keys and passwords are never logged. Uvicorn's own access log is off to avoid duplicates.
+- **Non-root**: the container runs as an unprivileged user; it writes only to `/app/llm_cache` and `/app/data`.
+- **Behind a proxy**: set `TRUST_PROXY=1` so rate limits use the real client address: the **rightmost** `X-Forwarded-For` entry, which is what a single trusted proxy (Caddy, or nginx with `$proxy_add_x_forwarded_for`) appends; entries to its left are client-controlled and ignored. Without it every visitor shares the proxy's address and its limit. Do not enable it when the app is reachable without the proxy.
+- **Browser smoke test**: with the stack up, `cd web && npm run e2e` (uses replay mode; no model calls).
 - **Persistence**: the `falkordb_data` volume. RDB snapshots are off on purpose (a background save blocks `GRAPH.COPY`). Back up by copying the volume while the container is stopped.
 - **Rebuild from scratch**: `docker compose down -v` then the steps above; the seed job is idempotent (`--force` reloads).
 - **Rate limits**: the free model is limited (the client enforces 30 requests per minute and retries). At most two agent runs execute at once; a third gets HTTP 429. Replay mode serves saved runs with no model call.
@@ -75,7 +82,7 @@ extraction-parity tests passed against it. The stack was then removed. A public 
 
 ## Demo-day checklist
 
-1. `GET /api/health` returns ok; the UI loads from a clean browser over HTTPS.
+1. `GET /api/ready` returns `ready: true`; the UI loads from a clean browser over HTTPS and "Run the example alert" reaches a verified plan.
 2. `POST /api/demo/reset` once (local), then open an example in **Replay** and **Tools only**; both work with no model.
 3. One **Live agent** run end to end (checks the key and the model).
 4. `uv run pytest` is green on the host (or in CI) and `replays/` matches the current tools (the replay test fails loudly otherwise).
