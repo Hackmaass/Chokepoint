@@ -37,6 +37,19 @@ curl -s localhost:8080/api/health                    # liveness: {"ok":true,...}
 curl -s localhost:8080/api/ready                     # readiness: {"ready":true,...}; 503 while the graph loads
 ```
 
+## Terminal walkthrough (no browser, no key)
+
+With the stack up and `/api/ready` true, print one alert end to end (open case, money that could move, plan, check on a
+copy of the graph, comparison with the rule of thumb, receipt) in about 4 seconds:
+
+```bash
+docker exec chokepoint-api python scripts/demo.py          # from the container, nothing to install on the host
+uv run python scripts/demo.py                              # from a checkout with uv; reads FALKORDB_* from .env
+```
+
+It calls the same tools as the UI's Tools-only mode and opens the example case in the database, which does not affect
+Replay for that alert (checked); after "Simulate late transfers" use Reset demo data first.
+
 ## TLS and a public URL
 
 Put a reverse proxy in front of `127.0.0.1:8080`. With Caddy (automatic certificates):

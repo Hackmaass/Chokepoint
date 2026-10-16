@@ -589,7 +589,7 @@ export default function App() {
                           )}
                         </tbody>
                       </table>
-                      <p className="note">The rule of thumb freezes the accounts the alerted account paid most recently. Held-out evaluation on 124 synthetic case-times: the two block about the same share of the money that had already escaped; Chokepoint's frozen accounts were more often part of the laundering (+19 points of precision) and it proves no route is left.</p>
+                      <p className="note">The rule of thumb freezes the accounts the alerted account paid most recently. Held-out evaluation on 124 synthetic case-times: the two block about the same share of the money that had already escaped; Chokepoint's frozen accounts were more often part of the laundering (+19 points of precision) and its plan is checked on a copy of the graph to leave no route in the recorded transfers.</p>
                       <table>
                         <thead><tr><th>Chokepoint plan: accounts to freeze</th><th>Role</th></tr></thead>
                         <tbody>

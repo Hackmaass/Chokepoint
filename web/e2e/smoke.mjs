@@ -86,7 +86,7 @@ async function open(viewport, intercept) {
     ),
   )
   await page.getByRole('button', { name: /^Investigate$/ }).click()
-  check(await page.getByText(/Too many requests/).isVisible(), 'a 429 is shown as a readable message')
+  check(await page.getByText(/Too many requests/).waitFor({ timeout: 5000 }).then(() => true, () => false), 'a 429 is shown as a readable message')
 }
 
 // 6. Phone: every mode is reachable, the page does not scroll sideways, and the answer comes before the map.

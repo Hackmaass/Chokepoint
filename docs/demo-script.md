@@ -19,3 +19,5 @@ $22,400 movable).
 Before recording: `uv run python scripts/load_ibm.py` state is clean (`POST /api/demo/reset`), API and UI running,
 recordings present in `replays/`.
 Do not say "hidden chokepoints". Quote only numbers from `docs/pilot-results.md`.
+No browser handy? `docker exec chokepoint-api python scripts/demo.py` prints the same chain in the terminal (see docs/deploy.md).
+The graph has a **Play routes** button that re-runs the route animation (routes appear hop by hop, then fade when the check lands); use it for a second take.

@@ -1,6 +1,6 @@
 # Chokepoint
 
-**An investigation agent that finds the accounts to freeze so stolen money cannot keep moving, proves no route is left, and keeps a receipt for every answer.**
+**An investigation agent that finds the accounts to freeze so stolen money loses its routes out, checks on a copy of the graph that no route is left in the recorded transfers, and keeps a receipt for every answer.**
 
 Built for [Graph Hacks: Context for AI Agents](https://www.wemakedevs.org/hackathons/falkordb) (WeMakeDevs x FalkorDB, Oct 15-18 2026). **Track 1: Agents that act on connected data.** Solo entry.
 

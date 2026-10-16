@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import cytoscape, { type Core, type StylesheetJson } from 'cytoscape'
 import { usd, type GraphView } from './api'
 
@@ -27,8 +27,9 @@ function styles(): StylesheetJson {
     { selector: 'node[role="frozen"]', style: { shape: 'ellipse', width: 24, height: 24, 'background-color': frozen, 'background-image': X_ICON, 'background-fit': 'contain', 'border-color': surface, 'border-width': 2, label: 'data(short)', 'font-size': 10, color: ink, 'text-valign': 'bottom', 'text-margin-y': 5, 'text-background-color': surface, 'text-background-opacity': 0.85, 'text-background-padding': '2px' } },
     { selector: 'node[role="rule"]', style: { shape: 'ellipse', width: 20, height: 20, 'background-color': surface, 'border-color': frozen, 'border-width': 2, 'border-style': 'dashed' } },
     { selector: 'node:selected', style: { 'border-color': ink, 'border-width': 3 } },
-    { selector: 'edge', style: { width: 1, 'line-color': hair, 'target-arrow-color': hair, 'target-arrow-shape': 'triangle', 'arrow-scale': 0.7, 'curve-style': 'bezier', opacity: 0.8 } },
+    { selector: 'edge', style: { width: 1, 'line-color': hair, 'target-arrow-color': hair, 'target-arrow-shape': 'triangle', 'arrow-scale': 0.7, 'curve-style': 'bezier', opacity: 0.8, 'transition-property': 'opacity, width, line-color, target-arrow-color', 'transition-duration': 420 } },
     { selector: 'edge[flow > 0]', style: { 'line-color': flow, 'target-arrow-color': flow, width: 'data(w)', opacity: 1 } },
+    { selector: 'edge.pre', style: { 'line-color': hair, 'target-arrow-color': hair, width: 1, opacity: 0.18 } },
     { selector: 'edge.cut', style: { 'line-color': hair, 'target-arrow-color': hair, width: 1, opacity: 0.5 } },
   ] as unknown as StylesheetJson
 }
@@ -38,6 +39,9 @@ type Props = { view: GraphView | null; showRule: boolean; verified: boolean; the
 export default function Graph({ view, showRule, verified, theme }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const cy = useRef<Core | null>(null)
+  const revealMs = useRef(0)
+  const [tick, setTick] = useState(0)
+  const reduced = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
   useEffect(() => {
     if (!host.current) return
@@ -91,6 +95,39 @@ export default function Graph({ view, showRule, verified, theme }: Props) {
     }
   }, [view, showRule, theme])
 
+  // Presentation only: the alerted account, then the routes that carried money hop by hop, then the frozen accounts.
+  // It reads what the case already holds and changes no figure.
+  useEffect(() => {
+    const c = cy.current
+    revealMs.current = 0
+    if (!c || reduced) return
+    const flowEdges = c.edges('[flow > 0]')
+    if (flowEdges.length === 0) return
+    c.edges().removeClass('cut').removeStyle()
+    flowEdges.addClass('pre')
+    const STEP = 380
+    const byDepth = new Map<number, cytoscape.EdgeCollection>()
+    flowEdges.forEach((e) => {
+      const d = Number(e.source().data('depth')) || 0
+      byDepth.set(d, (byDepth.get(d) ?? c.collection()).union(e))
+    })
+    const depths = [...byDepth.keys()].sort((a, b) => a - b)
+    const timers: ReturnType<typeof setTimeout>[] = []
+    c.nodes('[role="origin"]').animate({ style: { width: 40, height: 40 } }, { duration: 260 }).animate({ style: { width: 26, height: 26 } }, { duration: 260 })
+    depths.forEach((d, i) => {
+      timers.push(setTimeout(() => byDepth.get(d)?.removeClass('pre'), 350 + i * STEP))
+    })
+    const end = 350 + depths.length * STEP
+    timers.push(setTimeout(() => {
+      c.nodes('[role="frozen"]').animate({ style: { width: 36, height: 36 } }, { duration: 260 }).animate({ style: { width: 24, height: 24 } }, { duration: 260 })
+    }, end))
+    revealMs.current = end + 560
+    return () => {
+      timers.forEach(clearTimeout)
+      c.edges().removeClass('pre')
+    }
+  }, [view, showRule, theme, tick, reduced])
+
   // The memorable moment: routes that carried money are shown first, then fade as the verified cut takes effect.
   useEffect(() => {
     const c = cy.current
@@ -107,18 +144,19 @@ export default function Graph({ view, showRule, verified, theme }: Props) {
         e.animate({ style: { 'line-color': hair, 'target-arrow-color': hair, width: 1, opacity: 0.5 } }, { duration: 700, easing: 'ease-out' })
       })
       inner = setTimeout(() => edges.addClass('cut'), 760)
-    }, 1400)
+    }, Math.max(1400, revealMs.current + 500))
     return () => {
       clearTimeout(outer)
       if (inner) clearTimeout(inner)
     }
-  }, [verified, view])
+  }, [verified, view, showRule, theme, tick])
 
   return (
     <>
       <div ref={host} className="canvas" role="img" aria-label="Graph of accounts the money can reach. The accounts list in the Compare tab is the keyboard alternative." />
       <div className="toolbar">
         <button className="btn small" onClick={() => cy.current?.fit(undefined, 24)}>Fit</button>
+        {!reduced && <button className="btn small" disabled={!view} onClick={() => setTick((t) => t + 1)}>Play routes</button>}
         <button className="btn small" onClick={() => cy.current?.zoom(cy.current.zoom() * 1.25)}>Zoom in</button>
         <button className="btn small" onClick={() => cy.current?.zoom(cy.current.zoom() / 1.25)}>Zoom out</button>
       </div>
