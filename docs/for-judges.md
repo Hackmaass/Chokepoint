@@ -56,8 +56,10 @@ about 4 seconds. Want your own client? From a checkout, `uv run python -m chokep
 - **Claim:** at equal budget the plan blocks about as much escaped laundering as the best simple rule of thumb (difference
   -0.002, 95% interval [-0.09, +0.08] on the held-out half), is more precise (+0.19 [+0.07, +0.32]), and comes with a check that
   no route to the perimeter is left in the recorded transfers.
-- **Not claimed:** that it blocks more than the best simple rule, that it is time-aware (it uses a static view of past
-  transfers), or that results carry over to real data. The example alerts in the picker were kept where the rule of thumb leaves
+- **Not claimed:** that it blocks more than the best simple rule, that the plan itself is time-aware (it uses a static view of
+  past transfers; the Compare tab adds a timing check that keeps only time-ordered routes: on the 8 examples, 3 have no
+  time-ordered route at all and 2 need fewer accounts; it was added after the held-out run, so no claim beyond those 8), or that
+  results carry over to real data. The example alerts in the picker were kept where the rule of thumb leaves
   money movable; the typical case is a tie on blocked share.
 - The model chooses tools and writes a short summary; every figure on the cards comes from a tool, and a figure in the summary
   that no tool returned is flagged in the interface.

@@ -1,4 +1,4 @@
-# What a graph database is actually good for when you ask an agent to freeze accounts
+# Which mule accounts do you freeze? A verified cut on FalkorDB, and a bug I found on the way
 
 *Draft for the Graph Hacks blog prize. Numbers marked TODO are filled in from the final runs.*
 
@@ -31,6 +31,12 @@ The core of the plan is a minimum-cost vertex cut. Max-flow gives an *edge* cut,
 While testing that against NetworkX on random networks I found that `algo.maxFlow` sometimes returns a flow that is not maximal and does not conserve flow, on both v4.22.0 and 6.0.2: about 17% of the node-split networks I generated. I shrank a failing case to 11 edges (true maximum 453, FalkorDB returns 300). Plain random graphs without the node splitting were all correct, so it is a structural trigger, not capacities or cycles.
 
 So I did not trust it blindly. A FalkorDB result is accepted only with a certificate: the flow must be feasible, and no sink may be reachable in the residual graph, which by max-flow/min-cut duality proves it optimal. Otherwise the same network is solved exactly in NetworkX. Over 120 random networks: zero false accepts, and the final plans equal the NetworkX optimum on all of them. About 73% of finite cuts were certified straight from FalkorDB. The repro, the numbers and a draft bug report are in the repository, and a strict `xfail` test will tell me when it gets fixed.
+
+## Money cannot go back in time
+
+My plan, like most graph demos, treated the recorded transfers as a static map. That is conservative (it cuts every route, in or out of order) but it can over-warn. So I added a timing check: starting at the alerted account at the start of the window, keep only transfers that happen no earlier than the money could have arrived, then recompute the cut on what is left. Every time-ordered route survives this, so the result still cuts every real route.
+
+On the eight example alerts: in **three** there is no time-ordered route to the perimeter at all (the static map had routes, but each used a transfer that happened before the money got there), and in **two** the plan shrinks (3 to 1 accounts, 2 to 1). In the other three it is unchanged, including the alert I use in the demo. The check is shown on the card next to the static plan, not instead of it, and it is checked in code on the recorded transfers rather than on the graph copy. I added it after the held-out evaluation, so I make no claim about it beyond these eight examples.
 
 ## Things I'd tell myself at hour zero
 
