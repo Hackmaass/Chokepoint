@@ -632,8 +632,9 @@ class Toolbox:
         """Remove a case with its findings, plans and receipts (used by scripts and cleanup)."""
         self._write(
             "MATCH (c:Case {id: $id}) OPTIONAL MATCH (c)-[:HAS]->(f:Finding) "
-            "OPTIONAL MATCH (f)-[:HAS_PLAN]->(p:FreezePlan) OPTIONAL MATCH (tc:ToolCall)-[:RUN_IN]->(c) "
-            "DETACH DELETE p, f, tc, c", {"id": case_id})
+            "OPTIONAL MATCH (f)-[:HAS_PLAN]->(p:FreezePlan) OPTIONAL MATCH (p)-[:ORDERED_AS]->(o:FreezeOrder) "
+            "OPTIONAL MATCH (tc:ToolCall)-[:RUN_IN]->(c) "
+            "DETACH DELETE o, p, f, tc, c", {"id": case_id})
 
     # ------------------------------------------------------------------ late data: ripple
     AFFECTED_QUERY = (
@@ -769,13 +770,50 @@ class Toolbox:
                 "transfers": [{"from": r["s"], "to": r["d"], "usd_cents": r["amt"]} for r in rows],
                 "note": "synthetic late transfers added for the demo; they form a route that bypasses the plan"}
 
+    # ------------------------------------------------------------------ human approval (not a tool: the model cannot call it)
+    def order_freeze(self, plan_id: str, approver: str, reason: str) -> dict:
+        """A person approves the plan. Refused unless the plan was verified at the case's current data version and no
+        later transfers have arrived, so an approval cannot outlive its evidence. Records a FreezeOrder in the graph,
+        bound by a hash to the plan, its accounts, the data version and the verification finding. No bank is called."""
+        approver, reason = (approver or "").strip(), (reason or "").strip()
+        if not 2 <= len(approver) <= 60:
+            raise ToolError("BAD_ARGUMENT", "approver must be 2 to 60 characters")
+        if len(reason) > 300:
+            raise ToolError("BAD_ARGUMENT", "reason must be at most 300 characters")
+        info = self._plan(plan_id)
+        case = self._case(info["case_id"])
+        dv = int(case["data_version"])
+        if self.latest_batch() > dv:
+            raise ToolError("STALE_EVIDENCE", "later transfers arrived after this plan was checked",
+                            "re-run the affected findings, then approve the refreshed plan")
+        ver = self._cached(info["case_id"], f"verify:{plan_id}", dv)
+        if not ver or not ver[2].get("verified"):
+            raise ToolError("NOT_VERIFIED", "the plan has no passing check on a copy of the graph at the current data version",
+                            "run the check first; an unchecked plan cannot be approved")
+        if not info["frozen"]:
+            raise ToolError("NOTHING_TO_FREEZE", "this plan freezes no accounts")
+        plan_hash = hashlib.sha256(json.dumps(
+            {"plan": plan_id, "accounts": info["frozen"], "data_version": dv, "verification": ver[0]}, sort_keys=True).encode()).hexdigest()
+        order_id = f"fo-{uuid.uuid4().hex[:8]}"
+        now = int(time.time())
+        self._write(
+            "MATCH (p:FreezePlan {id: $p}) CREATE (o:FreezeOrder {id: $o, approver: $who, reason: $why, plan_hash: $h, "
+            "data_version: $dv, verification: $vf, created_at: $now, status: 'recorded'}) CREATE (p)-[:ORDERED_AS]->(o)",
+            {"p": plan_id, "o": order_id, "who": approver, "why": reason, "h": plan_hash, "dv": dv, "vf": ver[0], "now": now})
+        self._write("MATCH (o:FreezeOrder {id: $o}) UNWIND $fz AS acct MATCH (a:Account {id: acct}) CREATE (o)-[:FOR_ACCOUNT]->(a)",
+                    {"o": order_id, "fz": info["frozen"]})
+        return {"order_id": order_id, "plan_id": plan_id, "approver": approver, "reason": reason, "accounts": info["frozen"],
+                "plan_hash": plan_hash, "data_version": dv, "verification_finding_id": ver[0], "recorded_at": now,
+                "statement": "Freeze order recorded in the graph. No bank is called; a person would send it on."}
+
     def reset_demo_state(self) -> dict:
         """Remove simulated late data and all saved cases, returning the graph to its loaded state."""
         self._write("MATCH ()-[t:TRANSFER]->() WHERE t.batch > 0 DELETE t", {})
         self._write("MATCH (a:Account) WHERE a.id STARTS WITH '000000:' DETACH DELETE a", {})
         self._write("MATCH (b:Batch) WHERE b.id > 0 DELETE b", {})
         self._write("MATCH (c:Case) OPTIONAL MATCH (c)-[:HAS]->(f:Finding) OPTIONAL MATCH (f)-[:HAS_PLAN]->(p:FreezePlan) "
-                    "OPTIONAL MATCH (tc:ToolCall)-[:RUN_IN]->(c) DETACH DELETE p, f, tc, c", {})
+                    "OPTIONAL MATCH (p)-[:ORDERED_AS]->(o:FreezeOrder) "
+                    "OPTIONAL MATCH (tc:ToolCall)-[:RUN_IN]->(c) DETACH DELETE o, p, f, tc, c", {})
         return {"reset": True, "latest_data_version": self.latest_batch()}
 
     # ------------------------------------------------------------------ second agent: audit through shared state

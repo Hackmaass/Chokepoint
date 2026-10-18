@@ -202,6 +202,26 @@ async function open(viewport, intercept) {
   await ctx.close()
 }
 
+// 12. Human approval: refused until a person types a name; records an order bound to the checked plan; the model has no way to do it.
+{
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } })
+  const page = await ctx.newPage()
+  await page.goto(BASE + '/#/app', { waitUntil: 'networkidle' })
+  check((await page.getByRole('button', { name: /Approve a freeze order/ }).count()) === 0, 'approval: no approve button before a plan is checked')
+  await page.getByRole('button', { name: /Run the example alert/ }).click()
+  await page.waitForSelector('.chip.good', { timeout: 30000 })
+  await page.getByRole('button', { name: /Approve a freeze order/ }).click()
+  check(await page.getByRole('button', { name: 'Record freeze order' }).isDisabled(), 'approval: the order cannot be recorded without a name')
+  await page.getByLabel('Your name').fill('Asha Verma')
+  await page.getByRole('button', { name: 'Record freeze order' }).click()
+  await page.getByText(/Freeze order fo-/).waitFor({ timeout: 10000 })
+  check(await page.getByText(/bound to plan hash/).isVisible(), 'approval: the order is recorded and bound to the plan by a hash')
+  check(await page.getByText(/No bank is called/).first().isVisible(), 'approval: the page says no bank is called')
+  const toolReply = await page.evaluate(() => fetch('/api/tools/order_freeze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then((r) => r.status))
+  check(toolReply === 404, 'approval: the model-facing tool route does not know it')
+  await ctx.close()
+}
+
 // 8. Late data (demo mode only): banner, re-run only the affected findings, and a replay that no longer matches says
 //    why and offers a reset. The demo data is reset afterwards.
 {

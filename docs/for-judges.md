@@ -12,6 +12,8 @@ and a flag on any figure in the model's text that no tool returned. The agent ne
 through `GRAPH.RO_QUERY` so the database refuses writes on that path (`tests/test_gates_db.py`), and the tools write only their own
 cases, findings, plans and receipts.
 
+**A person decides.** A checked plan can be approved by a named person in the app: the approval is recorded as a freeze order in the graph, tied to the plan, its accounts, the data version and the check by a hash, and it is refused for an unchecked plan or once newer transfers exist (`tests/test_order.py`). It is an HTTP endpoint, not a tool, so the model cannot call it, and no bank is called.
+
 **Not real:** there is no bank data, no account balances (so "Traced in" is an upper bound, not a partial freeze), and the public
 demo replays a saved agent run rather than answering new questions. The plan itself is not time-aware (only the card's timing
 check is). The held-out results are one synthetic dataset and carry no promise for real data. An AI coding assistant wrote most of

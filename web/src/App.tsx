@@ -105,6 +105,12 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
   const [pendingTourRun, setPendingTourRun] = useState(false)
   const tourButton = useRef<HTMLButtonElement>(null)
   const autoTourUsed = useRef(false)
+  const [orders, setOrders] = useState<any[]>([])
+  const [orderOpen, setOrderOpen] = useState(false)
+  const [approver, setApprover] = useState('')
+  const [orderReason, setOrderReason] = useState('')
+  const [orderBusy, setOrderBusy] = useState(false)
+  const [orderError, setOrderError] = useState('')
   const [alertTs, setAlertTs] = useState('')
   const [mode, setMode] = useState<Mode>('replay')
   const [server, setServer] = useState<Ready>({ ready: false, state: 'checking' })
@@ -474,6 +480,34 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
               {view?.truncated && <span>Showing {view.shown_accounts} of {view.total_accounts} accounts</span>}
             </div>
   )
+  const myOrders = orders.filter((o) => o.plan_id === plan?.plan_id)
+  async function submitOrder() {
+    if (!plan) return
+    setOrderBusy(true)
+    setOrderError('')
+    try {
+      const r = await fetch(`/api/plans/${plan.plan_id}/order`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approver, reason: orderReason }) })
+      const d = await r.json()
+      if (!r.ok) setOrderError(d?.error ? `${d.error.message}${d.error.hint ? `. ${d.error.hint}` : ''}` : 'Check the name (2 to 60 characters) and the reason (at most 300).')
+      else { setOrders((o) => [...o, d]); setOrderOpen(false) }
+    } catch {
+      setOrderError('Could not reach the server.')
+    } finally {
+      setOrderBusy(false)
+    }
+  }
+  function orderText(o: any): string {
+    const amt = plan?.chokepoint.traced_in_usd_cents ?? {}
+    return [
+      `FREEZE ORDER ${o.order_id} (recorded in the graph; no bank is called)`,
+      `Alert: ${card.case?.alerted_account ?? ''} at ${card.case?.alert_ts ?? ''} UTC`,
+      `Approved by: ${o.approver} at ${new Date(o.recorded_at * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC${o.reason ? `. Reason: ${o.reason}` : ''}`,
+      `Plan ${o.plan_id}, bound by hash ${o.plan_hash}, data version ${o.data_version}, check ${o.verification_finding_id}`,
+      `Accounts to freeze (${o.accounts.length}):`,
+      ...o.accounts.map((a: string) => `  ${a}  received up to ${usd2(amt[a] ?? 0)} from the alerted account's downstream network`),
+      `Check: no route to the ${plan?.perimeter_hops}-hop perimeter is left on a copy of the graph, in the recorded transfers.`,
+    ].join(String.fromCharCode(10))
+  }
   const canRun = server.ready && !running && !!account && !!alertTs
   const shownError = error || (runError ? friendlyRunError(runError) : '')
 
@@ -661,6 +695,32 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
                           </li>
                         ))}
                       </ul>
+                    )}
+                    {verifiedLine?.verified && plan.chokepoint.accounts.length > 0 && (
+                      <div className="order">
+                        {myOrders.map((o) => (
+                          <p key={o.order_id} className="note order-done" role="status">
+                            <strong>Freeze order {o.order_id} recorded</strong> · approved by {o.approver} · bound to plan hash {o.plan_hash.slice(0, 12)} · data version {o.data_version}. No bank is called.{' '}
+                            <button className="link-btn" onClick={() => navigator.clipboard?.writeText(orderText(o))}>Copy freeze order</button>
+                          </p>
+                        ))}
+                        {info?.has_newer_data ? (
+                          <p className="note">Newer transfers exist, so this plan can no longer be approved. Re-run the affected findings first.</p>
+                        ) : orderOpen ? (
+                          <form className="order-form" onSubmit={(e) => { e.preventDefault(); submitOrder() }}>
+                            <label>Your name<input className="input" value={approver} onChange={(e) => setApprover(e.target.value)} maxLength={60} autoComplete="name" required /></label>
+                            <label>Reason (optional)<input className="input" value={orderReason} onChange={(e) => setOrderReason(e.target.value)} maxLength={300} /></label>
+                            <div className="order-actions">
+                              <button className="btn small primary" type="submit" disabled={orderBusy || approver.trim().length < 2}>{orderBusy ? 'Recording…' : 'Record freeze order'}</button>
+                              <button className="btn small" type="button" onClick={() => setOrderOpen(false)}>Cancel</button>
+                            </div>
+                            <p className="note">A person decides; the agent cannot approve. The order is tied to this checked plan and records your name. Nothing is sent to a bank.</p>
+                            {orderError && <p className="error" role="alert">{orderError}</p>}
+                          </form>
+                        ) : (
+                          <button className="btn small" onClick={() => setOrderOpen(true)}>{myOrders.length ? 'Approve again…' : 'Approve a freeze order…'}</button>
+                        )}
+                      </div>
                     )}
                     {plan.time_ordered && (
                       <p className="note timing-line" data-tour="timing">

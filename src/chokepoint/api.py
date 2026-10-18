@@ -305,6 +305,21 @@ def cases(limit: int = 20) -> list[dict]:
     return toolbox().list_cases(min(max(limit, 1), 50))
 
 
+class OrderRequest(BaseModel):
+    approver: str = Field(min_length=2, max_length=60)
+    reason: str = Field(default="", max_length=300)
+
+
+@app.post("/api/plans/{plan_id}/order", dependencies=[Depends(tool_limit)])
+def order_freeze(plan_id: str, req: OrderRequest) -> dict:
+    """A person approves a verified plan. Not a tool and not in MCP: the model cannot call it."""
+    try:
+        return toolbox().order_freeze(plan_id, req.approver, req.reason)
+    except ToolError as e:
+        status = 404 if e.code.startswith("UNKNOWN") else 409 if e.code in ("STALE_EVIDENCE", "NOT_VERIFIED") else 400
+        return error_response(status, e.code, e.message, e.hint)
+
+
 @app.get("/api/queries")
 def queries() -> dict:
     """The fixed Cypher behind each tool (static text; no database call)."""

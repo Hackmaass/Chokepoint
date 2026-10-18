@@ -495,3 +495,8 @@ th.num { text-align: right; }
 .queries { margin-top: 14px; }
 .query { margin-top: 10px; }
 .query pre { margin: 6px 0 0; padding: 10px 12px; max-height: 220px; overflow: auto; white-space: pre; border-radius: 8px; background: var(--surface-2); color: var(--ink-secondary); font-size: 12px; line-height: 18px; }
+.order { margin-top: 12px; display: grid; gap: 8px; justify-items: start; }
+.order-form { display: grid; gap: 10px; width: 100%; }
+.order-form label { display: grid; gap: 4px; font-size: 13px; line-height: 20px; color: var(--ink-secondary); }
+.order-actions { display: flex; gap: 8px; }
+.order-done { margin: 0; }

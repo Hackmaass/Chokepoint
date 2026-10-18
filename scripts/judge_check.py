@@ -161,6 +161,28 @@ for _, p, _ in rows:
 line("INFO", "MEASURED  solver recorded in the 8 example plans: " + ", ".join(f"{k} x{n}" for k, n in sorted(solvers.items())),
      "consistent with the line above when every plan says falkordb")
 
+# 5c. an approval cannot outlive its evidence, and the model cannot give one
+first_plan = rows[0][1]["plan_id"]
+refused_unverified = None
+try:
+    tb.order_freeze(rows[0][1]["plan_id"], "judge check", "")  # verified above: this one succeeds
+    ok_order = True
+except Exception as exc:  # noqa: BLE001
+    ok_order = False
+    print("         unexpected:", exc)
+ex2 = examples[1]
+c2 = tb.call("open_case", {"account": ex2["account"], "alert_ts": ex2["alert_ts"], "window_days": 6})  # a plan that is not checked
+case_ids.append(c2["case_id"])
+p2 = tb.call("freeze_plan", {"case_id": c2["case_id"]})
+try:
+    tb.order_freeze(p2["plan_id"], "judge check", "")
+except Exception as exc:  # noqa: BLE001
+    refused_unverified = getattr(exc, "code", type(exc).__name__)
+tool_reply = tb.call("order_freeze", {"plan_id": first_plan, "approver": "judge check", "reason": ""})
+line("PASS" if ok_order and refused_unverified == "NOT_VERIFIED" and "error" in tool_reply else "FAIL",
+     "MEASURED  a verified plan can be approved by a person; an unchecked plan is refused; the tool route does not know the approval",
+     f"verified plan approved: {ok_order}; unchecked plan: {refused_unverified}; as a tool: {tool_reply.get('error', {}).get('code')}")
+
 # 6. recorded, not re-run
 for label, detail in [
     ("RECORDED blocked share vs the rule of thumb: difference -0.002, 95% interval [-0.09, +0.08], held-out half",
