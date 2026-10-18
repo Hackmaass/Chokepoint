@@ -235,6 +235,7 @@ export default function Landing() {
                 Most tools score accounts as suspicious and stop there. Chokepoint answers the next question: which few accounts, if frozen, leave no route to the perimeter.
                 The Compare tab sets that plan beside a same-size rule of thumb on the same case.
               </p>
+              <p className="diff-more">It also declines: it says when there is no route, flags a cut of more than 25 accounts as not actionable, and shows when the recorded timing would not have let the money leave.</p>
             </article>
             <article className="diff-b" data-reveal style={{ ['--i' as string]: 1 }}>
               <h3>It checked its own database</h3>

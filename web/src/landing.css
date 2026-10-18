@@ -58,6 +58,7 @@
 .diff article:hover { background: var(--surface-2); transform: translateY(-3px); }
 .diff h3 { margin: 0 0 14px; font-size: 24px; line-height: 30px; font-weight: 600; letter-spacing: -0.03em; }
 .diff p { margin: 0; max-width: 56ch; color: var(--ink-secondary); }
+.diff .diff-more { margin-top: 14px; }
 .diff code { font: inherit; font-weight: 600; color: var(--ink-primary); }
 .diff-a { grid-column: span 7; }
 .diff-b { grid-column: span 5; background: var(--surface-2) !important; padding: 48px !important; }
