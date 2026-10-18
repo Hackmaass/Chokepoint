@@ -56,6 +56,8 @@ log = logging.getLogger("chokepoint.api")
 EXAMPLES = PROJECT_ROOT / "examples" / "examples.json"
 MAX_CONCURRENT_RUNS = 2
 MAX_RUNS_KEPT = 50
+LIVE_ATTEMPTS = int(os.environ.get("LIVE_LLM_ATTEMPTS", "2"))  # live demo gives up after ~12 s of 429s and shows a saved run
+EXAMPLE_TASK = re.compile(r"Account \S+ was alerted at \S+\. Investigate and recommend which accounts to freeze\.")
 RUN_TIMEOUT_S = float(os.environ.get("RUN_TIMEOUT_S", "300"))  # checked between agent steps
 SSE_PING_S = 15.0
 # Socket timeouts for the database. The longest query allowed is the server's TIMEOUT_MAX (60 s); without these a
@@ -378,12 +380,19 @@ def _execute(run_id: str, st: dict, req: RunRequest) -> None:
         st["events"].append(ev)
 
     try:
-        llm = LLMClient(mode=req.mode, cache_dir=REPLAY_DIR if req.mode == "replay" else None)
+        mode = req.mode
+        llm = LLMClient(mode=mode, cache_dir=REPLAY_DIR if mode == "replay" else None, attempts=LIVE_ATTEMPTS)
         extra = {"system": AUDITOR_PROMPT, "specs": AUDITOR_SPECS} if req.role == "auditor" else {}
         run = run_agent(req.task, toolbox(), llm, on_event=on_event, **extra)
+        if run.stopped == "llm_error" and mode == "live" and req.role == "investigator" and EXAMPLE_TASK.fullmatch(req.task):
+            # the provider is rate-limited or down: say so, then play the saved run for this example alert instead
+            st["events"].append({"type": "fallback", "t": time.time(),
+                                 "message": "Live model unavailable right now, showing a recorded run."})
+            mode = "replay"
+            run = run_agent(req.task, toolbox(), LLMClient(mode="replay", cache_dir=REPLAY_DIR), on_event=on_event)
         outcome = run.stopped or "ok"
         st["events"].append({"type": "card", "card": answer_card(run), "stopped": run.stopped,
-                             "cached_calls": run.cached_calls, "mode": req.mode, "t": time.time()})
+                             "cached_calls": run.cached_calls, "mode": mode, "t": time.time()})
     except RedisTimeoutError as e:  # a query outlived the socket timeout; the database itself may be fine
         outcome = "db_timeout"
         st["events"].append({"type": "error", "t": time.time(),

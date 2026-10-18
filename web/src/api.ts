@@ -69,7 +69,7 @@ export type Card = {
 }
 
 export type TraceEvent = {
-  type: 'start' | 'thought' | 'tool_call' | 'tool_result' | 'final' | 'error' | 'card'
+  type: 'start' | 'thought' | 'tool_call' | 'tool_result' | 'final' | 'error' | 'card' | 'fallback'
   step?: number
   tool?: string
   args?: Record<string, unknown> | null

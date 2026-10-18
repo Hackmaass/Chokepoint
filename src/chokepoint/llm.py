@@ -41,12 +41,13 @@ class ChatResult:
 
 class LLMClient:
     def __init__(self, settings: Settings | None = None, mode: str = "live", cache_dir: Path | None = None,
-                 temperature: float = 1.0, top_p: float = 0.95, max_tokens: int = 4096):
+                 temperature: float = 1.0, top_p: float = 0.95, max_tokens: int = 4096, attempts: int = 5):
         self.s = settings or get_settings()
         if mode not in ("live", "replay", "off"):
             raise ValueError("mode must be live, replay or off")
         self.mode, self.cache_dir = mode, cache_dir or CACHE_DIR
         self.temperature, self.top_p, self.max_tokens = temperature, top_p, max_tokens
+        self.attempts = attempts  # a public demo gives up sooner, so it can fall back to a saved run
         self._lock = threading.Lock()
         self._last = 0.0
         self._client = httpx.Client(timeout=120)
@@ -58,7 +59,7 @@ class LLMClient:
         if not self.s.llm_api_key:
             raise LLMError("no LLM API key configured (NVIDIA_API_KEY / LLM_API_KEY)")
         gap = 60.0 / max(1, self.s.llm_rpm_limit)
-        for attempt in range(5):
+        for attempt in range(self.attempts):
             with self._lock:
                 wait = self._last + gap - time.time()
                 if wait > 0:

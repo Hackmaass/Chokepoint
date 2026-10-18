@@ -115,6 +115,7 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
   const [altBusy, setAltBusy] = useState(false)
   const [gate, setGate] = useState<{ check: string; passed: boolean; detail: string; blocking: boolean }[] | null>(null)
   const [alertTs, setAlertTs] = useState('')
+  const [question, setQuestion] = useState('')
   const [mode, setMode] = useState<Mode>('replay')
   const [server, setServer] = useState<Ready>({ ready: false, state: 'checking' })
   const [liveAvailable, setLiveAvailable] = useState(true)
@@ -181,6 +182,7 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
     api.health().then((h) => {
       setDemo(h.demo)
       setLiveAvailable(h.live_available)
+      if (h.live_available) setMode('live')
     }).catch(() => undefined)
   }, [])
 
@@ -260,7 +262,8 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
     return out
   }, [events])
 
-  const push = useCallback((e: TraceEvent) => setEvents((prev) => [...prev, e]), [])
+  // a fallback event means the live model failed and a saved run follows: drop what the failed attempt showed
+  const push = useCallback((e: TraceEvent) => setEvents((prev) => (e.type === 'fallback' ? [e] : [...prev, e])), [])
 
   async function runTools() {
     push({ type: 'start' })
@@ -304,7 +307,8 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
         setRunning(false)
         return
       }
-      const task = `Account ${account} was alerted at ${alertTs}. Investigate and recommend which accounts to freeze.`
+      const q = runMode === 'live' ? question.trim().slice(0, 400) : ''
+      const task = `Account ${account} was alerted at ${alertTs}. ${q || 'Investigate and recommend which accounts to freeze.'}`
       const { run_id } = await api.startRun(task, runMode)
       source.current = openRunStream(run_id, {
         event: push,
@@ -639,7 +643,14 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
                 {running ? 'Investigating…' : runMode === 'tools' ? 'Open case and build plan' : 'Investigate'}
               </button>
             </div>
+            {runMode === 'live' && (
+              <div className="field">
+                <label htmlFor="q">Ask your own question about this alert (optional)</label>
+                <input id="q" className="input" value={question} maxLength={400} placeholder="Investigate and recommend which accounts to freeze." onChange={(e) => setQuestion(e.target.value)} />
+              </div>
+            )}
             <p className="note">{notice ? `${notice} ` : ''}{MODE_NOTES[runMode]}</p>
+            {events.find((e) => e.type === 'fallback') && <p className="note" role="status">{events.find((e) => e.type === 'fallback')?.message}</p>}
             {reconnecting && <p className="note" role="status">Connection interrupted, reconnecting…</p>}
             {shownError && (
               <p className="error" role="alert">

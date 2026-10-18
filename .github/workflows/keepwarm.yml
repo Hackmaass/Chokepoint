@@ -1,0 +1,14 @@
+name: keepwarm
+
+# Pings the free-tier host so a judge does not hit a one-minute cold start. GitHub runs scheduled workflows only from
+# the default branch, so this does nothing until it is merged to main. Render free is 750 h/month: one always-on service fits.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -fsS --retry 3 --max-time 60 https://chokepoint-uou2.onrender.com/api/health
