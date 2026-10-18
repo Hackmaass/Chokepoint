@@ -43,7 +43,11 @@
 
 .sec { padding: 96px 0; border-top: 1px solid var(--line-hairline); scroll-margin-top: 60px; }
 .sec h2 { margin: 0 0 40px; font-size: clamp(28px, 3.4vw, 44px); line-height: 1.08; font-weight: 600; letter-spacing: -0.035em; text-wrap: balance; max-width: 22ch; }
-.rail { list-style: none; margin: 0; padding: 0; counter-reset: step; max-width: 760px; }
+.how { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 56px; align-items: start; }
+.rail { list-style: none; margin: 0; padding: 0; counter-reset: step; max-width: 560px; }
+.shot { position: sticky; top: 92px; margin: 0; }
+.shot img { display: block; width: 100%; height: auto; border: 1px solid var(--line-baseline); border-radius: 12px; box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.7); }
+.shot figcaption { margin-top: 12px; font-size: 13px; line-height: 20px; color: var(--ink-muted); }
 .rail li { position: relative; padding: 0 0 32px 56px; counter-increment: step; }
 .rail li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--line-baseline); display: grid; place-items: center; font: 500 13px/1 var(--font-mono); color: var(--ink-secondary); background: var(--surface-page); }
 .rail li::after { content: ''; position: absolute; left: 15.5px; top: 38px; bottom: 6px; width: 1px; background: var(--line-hairline); }
@@ -81,6 +85,8 @@
   .diff-a, .diff-b, .diff-c, .diff-d { grid-column: span 12; }
   .nums > div { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .sec { padding: 64px 0; }
+  .how { grid-template-columns: minmax(0, 1fr); gap: 40px; }
+  .shot { position: static; }
 }
 @media (max-width: 600px) {
   .lp-nav nav { display: none; }

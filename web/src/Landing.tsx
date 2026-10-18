@@ -145,14 +145,20 @@ export default function Landing() {
 
         <section id="how" className="sec">
           <h2>From an alert to a receipt</h2>
-          <ol className="rail">
-            {STEPS.map((s) => (
-              <li key={s.t}>
-                <h3>{s.t}</h3>
-                <p>{s.d}</p>
-              </li>
-            ))}
-          </ol>
+          <div className="how">
+            <ol className="rail">
+              {STEPS.map((s) => (
+                <li key={s.t}>
+                  <h3>{s.t}</h3>
+                  <p>{s.d}</p>
+                </li>
+              ))}
+            </ol>
+            <figure className="shot">
+              <img src="/app-dark.webp" width="1440" height="900" alt="The Chokepoint app on the example alert: $22,410 could reach the perimeter, three accounts to freeze, a green check, and the routes drawn as a graph" />
+              <figcaption>The app on the example alert, in Replay. Everything on the card comes from a tool run.</figcaption>
+            </figure>
+          </div>
         </section>
 
         <section id="different" className="sec">
