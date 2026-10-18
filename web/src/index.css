@@ -491,3 +491,4 @@ th.num { text-align: right; }
 .after span:last-child { font-size: 12px; line-height: 16px; }
 @media (max-width: 899px) { .legend-float { display: none; } }
 @media (min-width: 900px) { .legend-below { display: none; } }
+.build { margin-left: 14px; color: var(--ink-muted); font-size: 12px; font-variant-numeric: tabular-nums; }

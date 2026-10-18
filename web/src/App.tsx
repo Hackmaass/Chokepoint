@@ -866,6 +866,7 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
         <span className="footer-links">
           <a href="/docs" target="_blank" rel="noreferrer">API</a>
           <a href="https://github.com/Hackmaass/Chokepoint" target="_blank" rel="noreferrer">Source</a>
+          <span className="build">Build {__BUILD__}</span>
         </span>
       </footer>
       {tour === 'welcome' && <TourWelcome onStart={startTour} onSkip={endTour} />}
