@@ -244,6 +244,10 @@ async function open(viewport, intercept) {
   } else {
     check(await page.getByText(/Queued, not sent/).isVisible(), 'dispatch: with no token the card says queued, not sent')
   }
+  await page.getByRole('tab', { name: /Compare/ }).click()
+  await page.getByRole('button', { name: 'Replay the 48 hours after the alert' }).click()
+  await page.getByText(/nothing to replay/).waitFor({ timeout: 15000 })
+  check(await page.getByText(/not a forecast/).first().isVisible(), 'replay: the recorded-data label is shown (this example has no followed transfers)')
   await page.getByRole('tab', { name: /Receipt/ }).click()
   await page.getByRole('button', { name: 'Verify chain' }).click()
   await page.getByText(/every link matches/).waitFor({ timeout: 10000 })

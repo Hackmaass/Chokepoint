@@ -364,6 +364,34 @@ def resume(case_id: str) -> dict:
     return result
 
 
+@app.get("/api/cases/{case_id}/replay")
+async def case_replay(case_id: str, plan: str, which: str = "chokepoint", speed: float = 3000.0):
+    """Server-sent events: the recorded transfers of the 48 h after the alert, in time order, marked held / crossed / moved for the
+    chosen plan (``which`` = chokepoint | rule), then a closing event with both plans' totals. Read-only."""
+    if which not in ("chokepoint", "rule"):
+        raise HTTPException(400, "which must be chokepoint or rule")
+    try:
+        data = await asyncio.to_thread(toolbox().replay_data, case_id, plan)
+    except ToolError as e:
+        return error_response(404 if e.code.startswith("UNKNOWN") else 400, e.code, e.message, e.hint)
+    events = data["events"] if which == "chokepoint" else data["rule_events"]
+    speed = min(max(speed, 60.0), 1e9)
+
+    async def stream():
+        prev = data["alert_ts"]
+        run = {"held": 0, "crossed": 0, "moved": 0}
+        for i, e in enumerate(events):
+            await asyncio.sleep(min(0.35, (e["ts"] - prev) * 60 / speed))
+            prev = e["ts"]
+            run[e["status"]] += e["usd"]
+            yield f"id: {i}\ndata: {json.dumps({'type': 'transfer', **e, 'running': run}, default=str)}\n\n"
+        end = {"type": "end", "which": which, "hours": data["hours"], "chokepoint": data["chokepoint"], "rule": data["rule"],
+               "followed": len(events), "note": data["note"]}
+        yield f"event: end\ndata: {json.dumps(end)}\n\n"
+
+    return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
 @app.get("/api/cases/{case_id}/chain")
 def case_chain(case_id: str) -> dict:
     """The case's hash-chained receipt records, for the browser to re-verify with WebCrypto."""

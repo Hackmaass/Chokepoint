@@ -551,6 +551,25 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
       setOrderError('Could not reach the server.')
     }
   }
+  const [replay, setReplay] = useState<{ which: string; running: boolean; events: any[]; totals: any; end: any } | null>(null)
+  const replaySource = useRef<EventSource | null>(null)
+  // Recorded transfers after the alert, followed from the alerted account, for the checked plan or the same-size rule of thumb.
+  function runReplay(which: 'chokepoint' | 'rule') {
+    if (!caseId || !plan) return
+    replaySource.current?.close()
+    setReplay({ which, running: true, events: [], totals: { held: 0, crossed: 0, moved: 0 }, end: null })
+    const es = new EventSource(`/api/cases/${caseId}/replay?plan=${plan.plan_id}&which=${which}&speed=3000`)
+    replaySource.current = es
+    es.onmessage = (m) => {
+      const e = JSON.parse(m.data)
+      setReplay((r) => (r ? { ...r, events: [...r.events.slice(-7), e], totals: e.running } : r))
+    }
+    es.addEventListener('end', (m) => {
+      es.close()
+      setReplay((r) => (r ? { ...r, running: false, end: JSON.parse((m as MessageEvent).data) } : r))
+    })
+    es.onerror = () => { es.close(); setReplay((r) => (r ? { ...r, running: false } : r)) }
+  }
   const [chain, setChain] = useState<string>('')
   // Recompute every record's hash in the browser from the exact text the server hashed (sha256(canon + "|" + parent_hash)).
   async function verifyChain() {
@@ -946,6 +965,20 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
               )}
               {tab === 'compare' && (
                 <div>
+                  {plan && verifiedLine?.verified && (
+                        <div className="replay">
+                          <button className="btn small" disabled={replay?.running} onClick={() => runReplay('chokepoint')}>Replay the 48 hours after the alert</button>{' '}
+                          {replay && !replay.running && <button className="btn small" onClick={() => runReplay(replay.which === 'rule' ? 'chokepoint' : 'rule')}>Same replay with the {replay.which === 'rule' ? 'Chokepoint plan' : 'rule-of-thumb plan'}</button>}
+                          {replay && (
+                            <div role="status">
+                              <p className="note">{replay.which === 'rule' ? 'Rule-of-thumb plan' : 'Chokepoint plan'}: held {usd2(replay.totals.held)} · crossed the perimeter {usd2(replay.totals.crossed)} · moved inside {usd2(replay.totals.moved)}</p>
+                              <ul className="note">{replay.events.map((e, i) => <li key={i} className="mono">{e.s.split(':')[1]?.slice(-6)} → {e.d.split(':')[1]?.slice(-6)} {usd2(e.usd)} {e.status}</li>)}</ul>
+                              {replay.end && replay.end.followed === 0 && <p className="note">No recorded transfer in the next 48 hours leaves the alerted account's network here, so there is nothing to replay.</p>}
+                              {replay.end && <p className="note">Same-size rule of thumb: held {usd2(replay.end.rule.held)}, crossed {usd2(replay.end.rule.crossed)}. Replay of the recorded synthetic transfers after the alert; amounts are recorded data, not a forecast, and the real transfers did not react to any freeze.</p>}
+                            </div>
+                          )}
+                        </div>
+                  )}
                   {!plan ? (
                     <p className="note">Build a freeze plan to compare it with the rule of thumb.</p>
                   ) : (

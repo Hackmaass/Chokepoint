@@ -43,6 +43,8 @@ from .casegraph import (
     transfer_times,
 )
 from .chain import canon, chain_hash
+from .fx import to_usd_cents
+from .replay import REPLAY_HOURS, simulate
 
 DAY = 1440
 DEFAULT_WINDOW_DAYS = 7
@@ -561,6 +563,31 @@ class Toolbox:
         tc, f = self._record(info["case_id"], "verify_plan", {"plan_id": plan_id}, region, "falkordb-shortestPath",
                              "verification", result, started, [], key=f"verify:{plan_id}")
         return {**result, "finding_id": f, "tool_call_id": tc}
+
+    def replay_data(self, case_id: str, plan_id: str, hours: int = REPLAY_HOURS) -> dict:
+        """Follow the recorded transfers of the ``hours`` after the alert for the plan's frozen accounts and for the same-size
+        rule-of-thumb plan. Read-only (a view for the UI, not a tool): nothing is written, so the case, plan and order stay valid."""
+        info = self._plan(plan_id)
+        if info["case_id"] != case_id:
+            raise ToolError("UNKNOWN_PLAN", f"plan {plan_id!r} does not belong to case {case_id!r}")
+        case = self._case(case_id)
+        region = self._region(case, int(info["plan"]["hops"]))
+        perimeter = {a for a, d in region.depth.items() if d == int(info["plan"]["hops"])}
+        rule = set(self._finding_value(info["finding_id"])["rule_of_thumb_plan"]["accounts"])
+        t0 = int(case["alert_ts"])
+        rows = self.g.ro_query(
+            "MATCH (a:Account)-[t:TRANSFER]->(b:Account) WHERE a.id IN $ids AND b.id IN $ids AND t.ts > $t0 AND t.ts <= $t1 "
+            "AND t.batch <= $dv RETURN a.id, b.id, t.ts, t.amt, t.cur, t.tid ORDER BY t.ts, t.tid",
+            params={"ids": list(region.depth), "t0": t0, "t1": t0 + hours * 60, "dv": int(case["data_version"])},
+            timeout=HEAVY_TIMEOUT_MS).result_set
+        transfers = [{"s": a, "d": b, "ts": int(ts), "usd": to_usd_cents(int(amt), cur), "tid": int(tid)}
+                     for a, b, ts, amt, cur, tid in rows]
+        ev, cp = simulate(transfers, region.origin, perimeter, set(info["frozen"]))
+        _, rl = simulate(transfers, region.origin, perimeter, rule)
+        return {"case_id": case_id, "plan_id": plan_id, "hours": hours, "events": ev, "chokepoint": cp, "rule": rl,
+                "rule_events": simulate(transfers, region.origin, perimeter, rule)[0], "alert_ts": t0,
+                "followed": len(ev), "recorded_in_window": len(transfers),
+                "note": "Replay of the recorded synthetic transfers after the alert. Amounts are recorded data, not a forecast."}
 
     def chain(self, case_id: str) -> list[dict]:
         """The case's receipt records, parents before children, each with the exact text its hash was made from (not a tool)."""
