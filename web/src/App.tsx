@@ -12,7 +12,7 @@ const TOUR: TourStep[] = [
   { id: 'map', target: 'map', needsResult: true, title: 'Every route out', body: 'The diamond is the alerted account and the green squares are the perimeter, three hops out. Lines are the transfers of the 7 days before the alert. Dashed lines are routes the plan has cut; Play routes shows them hop by hop.' },
   { id: 'hero', target: 'hero', needsResult: true, title: 'How much is at risk', body: 'The most money that could still reach the perimeter along these transfers. It is a ceiling worked out from past transfers, not a forecast.' },
   { id: 'plan', target: 'plan', needsResult: true, title: 'The accounts to freeze', body: 'The cheapest set of accounts that cuts every route. The amount beside each is what it received from the alerted account’s downstream network, an upper bound on what a hold would have to cover.' },
-  { id: 'verified', target: 'verified', needsResult: true, title: 'A check on a copy', body: 'Chokepoint deletes those accounts from a copy of the graph and searches again. Green means no route to the perimeter is left in the recorded transfers. It is a consistency check on the same data, not proof about the real world.' },
+  { id: 'verified', target: 'verified', needsResult: true, title: 'A check on a copy', body: 'Chokepoint deletes those accounts from a copy of the graph and searches again. Green means no route to the perimeter is left in the recorded transfers. It is a consistency check on the same data, not proof about the real world. The figure beneath is what could still reach the perimeter afterwards.' },
   { id: 'timing', target: 'timing', needsResult: true, title: 'Does time order change it?', body: "Money cannot go back in time. This line keeps only routes whose transfers happen in order. In three of the eight examples no route survives, so try the others." },
   { id: 'tabs', target: 'tabs', needsResult: true, title: 'Compare, receipt, audit', body: 'Compare sets the plan beside a same-size rule of thumb. Receipt shows the tool run behind each result. Audit lets a second agent, which sees only the graph, record a verdict.' },
   { id: 'done', title: 'That is the loop', body: 'Pick another alert above, or use Tools only to run the same steps without the agent. Everything here is synthetic, and a plan is a recommendation, not an instruction.' },
@@ -54,11 +54,31 @@ function friendlyRunError(m: string): string {
   return m
 }
 
+/** Counts a dollar figure from one value to another once; shows the end value straight away under reduced motion. */
+function Countdown({ from, to }: { from: number; to: number }) {
+  const [v, setV] = useState(from)
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || from === to) {
+      setV(to)
+      return
+    }
+    let raf = 0
+    const t0 = performance.now()
+    const tick = (t: number) => {
+      const k = Math.min(1, (t - t0) / 1100)
+      setV(Math.round(from + (to - from) * (1 - Math.pow(1 - k, 3))))
+      if (k < 1) raf = window.requestAnimationFrame(tick)
+    }
+    raf = window.requestAnimationFrame(tick)
+    return () => window.cancelAnimationFrame(raf)
+  }, [from, to])
+  return <>{usd(v)}</>
+}
+
 export default function App({ autoTour = false }: { autoTour?: boolean }) {
   const [examples, setExamples] = useState<Example[]>([])
   const [recent, setRecent] = useState<CaseRow[]>([])
   const [account, setAccount] = useState('')
-  const [fullSummary, setFullSummary] = useState(false)
   const [tour, setTour] = useState<'off' | 'welcome' | 'steps'>('off')
   const [pendingTourRun, setPendingTourRun] = useState(false)
   const tourButton = useRef<HTMLButtonElement>(null)
@@ -422,6 +442,16 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
     setPendingTourRun(false)
     tourButton.current?.focus()
   }
+  const LEGEND = (
+    <div className="legend" aria-label="Legend">
+              <span><i className="sw diamond" /> alerted account (already frozen)</span>
+              <span><i className="sw square" /> perimeter</span>
+              <span><i className="sw circle" /> freeze</span>
+              <span><i className="sw ring" /> rule-of-thumb pick</span>
+              <span><i className="sw line" /> route that can carry money</span>
+              {view?.truncated && <span>Showing {view.shown_accounts} of {view.total_accounts} accounts</span>}
+            </div>
+  )
   const canRun = server.ready && !running && !!account && !!alertTs
   const shownError = error || (runError ? friendlyRunError(runError) : '')
 
@@ -516,7 +546,10 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
 
           <div className="panel canvas-wrap" data-tour="map">
             {view ? (
-              <Graph view={view} showRule={showRule} verified={verified} theme={theme} />
+              <>
+                <Graph view={view} showRule={showRule} verified={verified} theme={theme} />
+                <div className="legend-float">{LEGEND}</div>
+              </>
             ) : (
               <div className="canvas-empty">
                 <svg className="empty-glyph" viewBox="0 0 84 84" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden>
@@ -544,14 +577,7 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
           </div>
 
           <div>
-            <div className="legend" aria-label="Legend">
-              <span><i className="sw diamond" /> alerted account (already frozen)</span>
-              <span><i className="sw square" /> perimeter</span>
-              <span><i className="sw circle" /> freeze</span>
-              <span><i className="sw ring" /> rule-of-thumb pick</span>
-              <span><i className="sw line" /> route that can carry money</span>
-              {view?.truncated && <span>Showing {view.shown_accounts} of {view.total_accounts} accounts</span>}
-            </div>
+            {!view ? LEGEND : <div className="legend-below">{LEGEND}</div>}
             <p className="note legend-note">
               {card.case ? `Transfers in the ${card.case.window_days} days before the alert · ${card.case.perimeter_hops}-hop perimeter · data version ${card.case.data_version}` : 'Static view of past transfers; it does not know what happens after the alert.'}
               {demo && caseId && (
@@ -572,7 +598,7 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
               <>
                 <h1 className="hero" data-tour="hero">
                   {usd(movable)}{' '}
-                  <small>can move along these routes · route capacity from past transfers, not a forecast</small>
+                  <small>could still reach the perimeter · a ceiling from past transfers, not a forecast</small>
                 </h1>
                 {plan?.time_ordered && plan.time_ordered.money_movable_usd_cents !== movable && (
                   <p className="hero-timed">In time order: <strong>{usd(plan.time_ordered.money_movable_usd_cents)}</strong> (transfers out of order are not routes)</p>
@@ -583,16 +609,25 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
                       <p className="card-line">Freeze {plan.chokepoint.count} account{plan.chokepoint.count === 1 ? '' : 's'} to cut these routes</p>
                       <button className="btn small" onClick={copyPlan}>{copied ? 'Copied' : 'Copy account list'}</button>
                     </div>
-                    {verifiedLine ? (
-                      <span className={`chip ${verifiedLine.verified ? 'good' : 'bad'}`} data-tour="verified">
-                        <span className="ico" aria-hidden><Icon kind={verifiedLine.verified ? 'check' : 'cross'} /></span>
-                        {verifiedLine.verified ? `Verified: no route left to the ${plan.perimeter_hops}-hop perimeter` : 'Not verified: routes remain'}
-                      </span>
-                    ) : running ? (
-                      <span className="chip"><span className="ico" aria-hidden>…</span> Verifying</span>
-                    ) : (
-                      <span className="chip warn"><span className="ico" aria-hidden>!</span> Not verified yet</span>
-                    )}
+                    <div className="verify" data-tour="verified">
+                      {verifiedLine ? (
+                        <span className={`chip ${verifiedLine.verified ? 'good' : 'bad'}`}>
+                          <span className="ico" aria-hidden><Icon kind={verifiedLine.verified ? 'check' : 'cross'} /></span>
+                          {verifiedLine.verified ? `Verified: no route left to the ${plan.perimeter_hops}-hop perimeter` : 'Not verified: routes remain'}
+                        </span>
+                      ) : running ? (
+                        <span className="chip"><span className="ico" aria-hidden>…</span> Verifying</span>
+                      ) : (
+                        <span className="chip warn"><span className="ico" aria-hidden>!</span> Not verified yet</span>
+                      )}
+                      {verifiedLine?.verified && (
+                        <p className="after">
+                          <span>After the freeze</span>
+                          <strong><Countdown from={movable ?? 0} to={plan.chokepoint.residual_movable_usd_cents} /></strong>
+                          <span>in the recorded transfers, checked on a copy</span>
+                        </p>
+                      )}
+                    </div>
                     {verifiedLine && <details className="how-checked"><summary>How this was checked</summary><p className="note">{verifiedLine.method}</p></details>}
                     {plan.chokepoint.accounts.length > 0 && (
                       <ul className="acct-list" aria-label="Accounts to freeze" data-tour="plan">
@@ -609,7 +644,9 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
                       <p className="note timing-line" data-tour="timing">
                         <strong>Timing check:</strong>{' '}
                         {plan.time_ordered.has_time_ordered_route
-                          ? `${plan.time_ordered.time_ordered_pairs} of ${plan.time_ordered.transfer_pairs} links can carry money in time order; the freeze needs ${plan.time_ordered.count} account${plan.time_ordered.count === 1 ? '' : 's'}${sameSet ? ', the same accounts as above' : ` (${plan.chokepoint.count} above; ${plan.time_ordered.accounts.length === 0 ? 'none needed' : plan.time_ordered.accounts.every((a) => plan.chokepoint.accounts.includes(a)) ? 'a subset' : 'a different set'})`}.`
+                          ? sameSet
+                            ? `${plan.time_ordered.time_ordered_pairs} of ${plan.time_ordered.transfer_pairs} links work in time order, and the same ${plan.time_ordered.count} account${plan.time_ordered.count === 1 ? '' : 's'} cut them.`
+                            : `${plan.time_ordered.time_ordered_pairs} of ${plan.time_ordered.transfer_pairs} links work in time order; the freeze needs ${plan.time_ordered.count} account${plan.time_ordered.count === 1 ? '' : 's'} (${plan.chokepoint.count} above; ${plan.time_ordered.accounts.length === 0 ? 'none needed' : plan.time_ordered.accounts.every((a) => plan.chokepoint.accounts.includes(a)) ? 'a subset' : 'a different set'}).`
                           : 'none of the routes works in time order here, so the recorded timing would not have let this money leave. Details in Compare.'}
                       </p>
                     )}
@@ -638,18 +675,14 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
               </div>
             )}
             {finalText && (
-              <div className="narrative">
-                <p className={`summary${fullSummary ? '' : ' clamp'}`}>{finalText}</p>
-                {finalText.length > 320 && (
-                  <button className="link-btn" aria-expanded={fullSummary} onClick={() => setFullSummary((v) => !v)}>{fullSummary ? 'Show less' : 'Read the full summary'}</button>
-                )}
+              <>
                 {unmatched && !unmatched.faithful && (
-                  <span className="banner" role="note"><span className="ico" aria-hidden>!</span><span>This summary mentions a figure that no tool returned ({[...unmatched.unmatched_amounts, ...unmatched.unmatched_accounts].join(', ')}). Rely on the cards and tables, not the text.</span></span>
+                  <div className="banner" role="note"><span className="ico" aria-hidden>!</span><span>This summary mentions a figure that no tool returned ({[...unmatched.unmatched_amounts, ...unmatched.unmatched_accounts].join(', ')}). Rely on the cards and tables, not the text.</span></div>
                 )}
-                <span className="note block">
-                  {cachedRun ? 'Replay: this is a saved run, not a live response. ' : ''}The model writes the words; the numbers on the cards come from the tools, and this summary is checked against them.
-                </span>
-              </div>
+                <p className="note">
+                  {cachedRun ? 'Replay: a saved run, not a live response.' : 'Live run.'} Numbers come from tool runs; the model only writes the summary below.
+                </p>
+              </>
             )}
             {resumed && !refresh && <p className="note">Resumed from a saved case; nothing was recomputed.</p>}
             {info?.has_newer_data && (
@@ -690,8 +723,8 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
                       <details className="step">
                         <summary>
                           <span className={`mark ${s.ms === undefined ? 'run' : s.ok ? 'ok' : 'fail'}`} aria-hidden>{s.ms === undefined ? null : <Icon kind={s.ok ? 'check' : 'cross'} />}</span>
-                          <span className="name">{STEP_NAMES[s.tool] ?? s.tool}{s.cached ? ' (saved)' : ''}</span>
-                          <span className="ms">{s.ms === undefined ? 'running' : `${(s.ms / 1000).toFixed(1)} s`}</span>
+                          <span className="name">{STEP_NAMES[s.tool] ?? s.tool}</span>
+                          <span className="ms">{s.ms === undefined ? 'running' : cachedRun && s.ms < 250 ? 'saved' : `${(s.ms / 1000).toFixed(1)} s`}</span>
                         </summary>
                         <pre>{JSON.stringify(s.args, null, 1)}{'\n'}{s.summary}</pre>
                       </details>
@@ -818,6 +851,14 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
               )}
             </div>
           </div>
+
+          {finalText && (
+            <details className="panel agent-summary">
+              <summary>Agent summary</summary>
+              <p>{finalText}</p>
+              <p className="note">The model writes these words. Every figure on the cards comes from a tool run, and this text is checked against them.</p>
+            </details>
+          )}
         </aside>
       </main>
       <footer className="footer">

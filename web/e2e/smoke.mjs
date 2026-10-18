@@ -134,6 +134,8 @@ async function open(viewport, intercept) {
   await page.getByRole('button', { name: 'Start the tour' }).click()
   for (let n = 0; n < 7; n++) {
     await page.waitForFunction(() => !document.querySelector('.tour-card .btn.primary')?.disabled, null, { timeout: 30000 })
+    await page.waitForTimeout(450) // the spotlight glides to its target
+    if (!(await page.locator('.tour-spot').count())) failures.push(`tour: step ${n + 1} has no spotlight, so its target moved or is missing`)
     await page.getByRole('button', { name: 'Next' }).click()
   }
   check(await page.getByRole('button', { name: 'Explore on my own' }).isVisible(), 'tour: eight steps reach the last card')
@@ -169,6 +171,25 @@ async function open(viewport, intercept) {
   await p2.goto(BASE + '/', { waitUntil: 'networkidle' })
   check((await p2.evaluate(() => document.documentElement.getAttribute('data-theme'))) === 'dark', 'landing: dark by default even when the system is light')
   await light.close()
+}
+
+// 11. Result column: the deliverable and the tab bar fit a laptop screen; the "after the freeze" figure appears only once verified.
+{
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } })
+  const page = await ctx.newPage()
+  await page.goto(BASE + '/#/app', { waitUntil: 'networkidle' })
+  await page.getByRole('button', { name: /Run the example alert/ }).waitFor()
+  check((await page.locator('.after').count()) === 0, 'result: no "after the freeze" figure before a run')
+  await page.getByRole('button', { name: /Run the example alert/ }).click()
+  await page.waitForSelector('.chip.good', { timeout: 30000 })
+  await page.waitForSelector('.after', { timeout: 5000 })
+  check(true, 'result: the "after the freeze" figure appears once the plan is verified')
+  await page.waitForTimeout(1500)
+  const bar = await page.locator('[role=tablist]').boundingBox()
+  check(!!bar && bar.y + bar.height <= 768, `result: the tab bar is on screen at 1366x768 without scrolling (bottom ${bar ? Math.round(bar.y + bar.height) : '?'})`)
+  const accts = await page.locator('.acct-list li').count()
+  check(accts > 0, 'result: the accounts to freeze are listed in the decision card')
+  await ctx.close()
 }
 
 // 8. Late data (demo mode only): banner, re-run only the affected findings, and a replay that no longer matches says

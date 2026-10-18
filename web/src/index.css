@@ -473,3 +473,21 @@ th.num { text-align: right; }
   .seg button { min-height: 44px; }
   .btn.small { min-height: 40px; }
 }
+
+/* Result column: the deliverable first, the agent's prose last */
+.verify { display: grid; gap: 10px; justify-items: start; }
+.after { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: 13px; line-height: 20px; color: var(--ink-secondary); }
+.after strong { font-size: 24px; line-height: 28px; font-weight: 600; letter-spacing: -0.03em; color: var(--ink-primary); font-variant-numeric: tabular-nums; }
+.agent-summary { padding: 0; }
+.agent-summary summary { cursor: pointer; padding: 14px 18px; font-weight: 600; font-size: 14px; list-style-position: inside; }
+.agent-summary summary:hover { color: var(--ink-primary); }
+.agent-summary p { margin: 0; padding: 0 18px 16px; max-width: 62ch; white-space: pre-wrap; color: var(--ink-secondary); }
+@media (prefers-reduced-motion: reduce) { .agent-summary { scroll-behavior: auto; } }
+
+/* The legend sits on the map, bottom left, so the page below it stays short */
+.legend-float { position: absolute; left: 14px; bottom: 12px; right: 14px; pointer-events: none; z-index: 2; }
+.legend-float .legend { display: inline-flex; padding: 7px 12px; border: 1px solid var(--line-hairline); border-radius: 9px; background: color-mix(in srgb, var(--surface-1) 88%, transparent); gap: 6px 14px; font-size: 11px; line-height: 16px; backdrop-filter: blur(4px); }
+.after { flex-wrap: nowrap; }
+.after span:last-child { font-size: 12px; line-height: 16px; }
+@media (max-width: 899px) { .legend-float { display: none; } }
+@media (min-width: 900px) { .legend-below { display: none; } }
