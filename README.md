@@ -4,7 +4,7 @@
 
 Built for [Graph Hacks: Context for AI Agents](https://www.wemakedevs.org/hackathons/falkordb) (WeMakeDevs x FalkorDB, Oct 15-18 2026). **Tracks: 1, Agents that act on connected data (primary), and 2, Agent memory and coordination.** Solo entry.
 
-> Live demo: **<https://chokepoint-uou2.onrender.com/>** (a free host: the first load after idle can take about a minute) · Demo video: _to be added_ · Blog post: _to be added_
+> Live demo: **<https://chokepoint-uou2.onrender.com/>** (a free host: the first load after idle can take about a minute) · Demo video: **<https://youtu.be/St6muXDuDKo>** · Blog post: _to be added_
 
 [![ci](https://github.com/Hackmaass/Chokepoint/actions/workflows/ci.yml/badge.svg)](https://github.com/Hackmaass/Chokepoint/actions/workflows/ci.yml) ![data](https://img.shields.io/badge/data-synthetic-informational) ![license](https://img.shields.io/badge/license-MIT-blue) ![FalkorDB](https://img.shields.io/badge/FalkorDB-v4.22.0-orange)
 
