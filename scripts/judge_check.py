@@ -134,7 +134,7 @@ for seed in range(args.networks):
 line("FAIL" if false_accepts else "PASS", "MEASURED  the certificate never accepts a wrong FalkorDB max-flow answer (0 false accepts)",
      f"{ran} random networks in {time.time() - t0:.0f}s: {accepted} accepted, {rejected} rejected, {nothing} with no answer, {false_accepts} false accepts")
 line("INFO", f"MEASURED  FalkorDB's raw answer differed from the exact value on {raw_wrong} of {ran} networks ({100 * raw_wrong / max(ran, 1):.0f}%)",
-     "docs say about 17%; this batch is small, so expect it to wander. Run with --networks 120 for the documented sample")
+     "docs say 12 to 17% across two batches (14 of 120 here, 24 of about 140 earlier); small batches wander")
 
 # 6. recorded, not re-run
 for label, detail in [

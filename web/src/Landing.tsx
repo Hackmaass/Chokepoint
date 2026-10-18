@@ -239,7 +239,7 @@ export default function Landing() {
             <article className="diff-b" data-reveal style={{ ['--i' as string]: 1 }}>
               <h3>It checked its own database</h3>
               <p>
-                On about 17% of the node-split networks we generated, FalkorDB’s <code>algo.maxFlow</code> returned a flow that was not maximal. We wrote an 11-edge repro, and now accept
+                On 12 to 17% of the random node-split networks we generated (two batches), FalkorDB’s <code>algo.maxFlow</code> returned a flow that was not maximal. We wrote an 11-edge repro, and now accept
                 its answer only with a certificate; otherwise an exact solver runs. In testing, 0 false accepts across 120 random networks.
               </p>
             </article>

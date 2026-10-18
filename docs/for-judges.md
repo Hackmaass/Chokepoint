@@ -40,8 +40,8 @@ and the original protocol (`docs/pilot-results.md`).
 
 ## What is new here, and why FalkorDB is load-bearing
 
-- **A FalkorDB finding with a workaround.** `algo.maxFlow` returned a non-maximal, flow-violating answer on about 17% of random
-  node-split networks (an 11-edge repro is in `docs/falkordb-bug-report-draft.md`; it still returns 300 instead of 453 on
+- **A FalkorDB finding with a workaround.** `algo.maxFlow` returned a non-maximal, flow-violating answer on 12 to 17% of random
+  node-split networks (two batches: 14 of 120 and 24 of about 140) (an 11-edge repro is in `docs/falkordb-bug-report-draft.md`; it still returns 300 instead of 453 on
   v4.22.0). We use it as a first pass and accept an answer only with a feasibility-and-residual certificate, otherwise an exact
   solver runs: 0 false accepts on 120 random networks (`tests/test_cut_oracle.py`).
 - **The graph is the working memory, not a cache.** Cases, tool runs, findings, plans, receipts, supersession of stale findings and
@@ -63,7 +63,7 @@ and the original protocol (`docs/pilot-results.md`).
 | Memory across sessions | Header menu "Resume a saved case…"; `resume_case`; late data via `refresh_case` (`docs/ripple-eval.md`) |
 | A second agent sharing state | The auditor reads only what is in the graph (`audit_checks`, `submit_audit`); code refuses "agree" while a blocking check fails |
 | Rigour of the numbers | `docs/pilot-protocol.md` (written before the held-out run), `docs/pilot-results.md`, `docs/guarantee-and-latency.md` |
-| A FalkorDB finding | `docs/falkordb-maxflow-findings.md`: `algo.maxFlow` returns a non-maximal flow on about 17% of random node-split networks; results are accepted only with a certificate, otherwise an exact solver runs |
+| A FalkorDB finding | `docs/falkordb-maxflow-findings.md`: `algo.maxFlow` returns a non-maximal flow on 12 to 17% of random node-split networks (two batches); results are accepted only with a certificate, otherwise an exact solver runs |
 
 ## What we claim, and what we do not
 

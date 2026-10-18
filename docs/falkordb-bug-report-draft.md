@@ -8,7 +8,7 @@
 returns a value below the true maximum flow, and the returned `edgeFlows` violate flow
 conservation. Plain random graphs (cyclic and acyclic, 260 trials) were correct.
 
-**Rate:** about 17% of ~140 random node-split networks (24 below the true value, none above). One
+**Rate:** about 17% of ~140 random node-split networks (24 below the true value, none above); a second batch of 120 (seeds 0-119, `scripts/judge_check.py --networks 120`) gave 12% (14 of 120). One
 ~60-edge network made the procedure run until the server timeout (the per-query `TIMEOUT` was not
 honoured; the server default applied; the server stayed healthy afterwards).
 
