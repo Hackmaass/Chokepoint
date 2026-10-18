@@ -26,6 +26,18 @@ No browser? Once the stack is ready, `docker exec chokepoint-api python scripts/
 about 4 seconds. Want your own client? From a checkout, `uv run python -m chokepoint.mcp_server` serves the same tools over MCP
 (stdio, or token-protected HTTP with `--http`).
 
+## Check every number in one command
+
+```bash
+docker exec chokepoint-api python scripts/judge_check.py      # or: uv run python scripts/judge_check.py
+```
+
+No key, no model, about a minute. It re-measures the figures the landing page and this page state (all 8 example plans verified on a
+copy of the graph with $0 left, $22,410 and 3 accounts for the default alert, the timing check on the 8 examples, the 11-edge
+`algo.maxFlow` repro, and the certificate on random node-split networks, `--networks 120` for the full batch) and exits non-zero if
+any measured line fails. The held-out evaluation figures are printed as RECORDED, never as PASS: they come from the full dataset
+and the original protocol (`docs/pilot-results.md`).
+
 ## What is new here, and why FalkorDB is load-bearing
 
 - **A FalkorDB finding with a workaround.** `algo.maxFlow` returned a non-maximal, flow-violating answer on about 17% of random
