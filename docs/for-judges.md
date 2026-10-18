@@ -5,7 +5,8 @@ stop it?** It then checks its own plan and keeps a receipt. Everything below use
 
 ## See it in 60 seconds (no key, no model calls)
 
-1. Open the live app, or run it locally: follow steps 2 and 3 of [`deploy.md`](deploy.md) (copy `.env.example` to `.env`, start
+1. Open the live app (it holds the neighbourhoods of the 8 example alerts, built from `Dockerfile.hosted`; any other account
+   needs the full stack, [`deploy.md`](deploy.md)), or run it locally: follow steps 2 and 3 of [`deploy.md`](deploy.md) (copy `.env.example` to `.env`, start
    `falkordb`, run the `seed` job, then start the `app` profile). The seed step downloads the dataset (checksum verified) and
    loads it, which takes a few minutes; wait until `http://127.0.0.1:8080/api/ready` says `"ready":true`. **Replay** is the default
    mode: it plays back a saved agent run and says so on screen.
@@ -22,6 +23,21 @@ stop it?** It then checks its own plan and keeps a receipt. Everything below use
 No browser? Once the stack is ready, `docker exec chokepoint-api python scripts/demo.py` prints the same chain in the terminal in
 about 4 seconds. Want your own client? From a checkout, `uv run python -m chokepoint.mcp_server` serves the same tools over MCP
 (stdio, or token-protected HTTP with `--http`).
+
+## What is new here, and why FalkorDB is load-bearing
+
+- **A FalkorDB finding with a workaround.** `algo.maxFlow` returned a non-maximal, flow-violating answer on about 17% of random
+  node-split networks (an 11-edge repro is in `docs/falkordb-bug-report-draft.md`; it still returns 300 instead of 453 on
+  v4.22.0). We use it as a first pass and accept an answer only with a feasibility-and-residual certificate, otherwise an exact
+  solver runs: 0 false accepts on 120 random networks (`tests/test_cut_oracle.py`).
+- **The graph is the working memory, not a cache.** Cases, tool runs, findings, plans, receipts, supersession of stale findings and
+  the auditor's verdict are nodes and edges in the same FalkorDB graph that holds the transfers; resuming a case or re-running only
+  the findings that read late-arriving accounts is a graph query.
+- **Verification uses the database, not the planner.** The plan is checked on a `GRAPH.COPY` of the graph with the frozen accounts
+  deleted, then `shortestPath` to every perimeter account. Take FalkorDB out and the region queries, the first-pass max flow, the
+  independent check and the receipts all go with it.
+- **"Traced in (max)"** in the Compare tab is the money an account received from the alerted account's downstream network inside
+  the window: an upper bound on what a hold would have to cover. The dataset has no balances, so it is not a share of any balance.
 
 ## Where each thing is
 
