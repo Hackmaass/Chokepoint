@@ -45,6 +45,7 @@ export default function App() {
   const [examples, setExamples] = useState<Example[]>([])
   const [recent, setRecent] = useState<CaseRow[]>([])
   const [account, setAccount] = useState('')
+  const [fullSummary, setFullSummary] = useState(false)
   const [alertTs, setAlertTs] = useState('')
   const [mode, setMode] = useState<Mode>('replay')
   const [server, setServer] = useState<Ready>({ ready: false, state: 'checking' })
@@ -359,6 +360,7 @@ export default function App() {
 
   const movable = card.movable_usd_cents ?? card.plan?.before_usd_cents
   const plan = card.plan
+  const sameSet = !!plan?.time_ordered && plan.time_ordered.accounts.length === plan.chokepoint.accounts.length && plan.time_ordered.accounts.every((a) => plan.chokepoint.accounts.includes(a))
   const noRoute = card.case && !card.case.has_route_to_perimeter
   const verifiedLine = card.verification
   const canRun = server.ready && !running && !!account && !!alertTs
@@ -509,6 +511,9 @@ export default function App() {
                   {usd(movable)}
                   <small>can move along these routes · route capacity from past transfers, not a forecast</small>
                 </h1>
+                {plan?.time_ordered && plan.time_ordered.money_movable_usd_cents !== movable && (
+                  <p className="hero-timed">In time order: <strong>{usd(plan.time_ordered.money_movable_usd_cents)}</strong> (transfers out of order are not routes)</p>
+                )}
                 {plan && (
                   <>
                     <div className="line-actions">
@@ -525,14 +530,14 @@ export default function App() {
                     ) : (
                       <span className="chip warn"><span className="ico" aria-hidden>!</span> Not verified yet</span>
                     )}
-                    {verifiedLine && <p className="note">{verifiedLine.method}</p>}
+                    {verifiedLine && <details className="how-checked"><summary>How this was checked</summary><p className="note">{verifiedLine.method}</p></details>}
                     {plan.chokepoint.accounts.length > 0 && (
                       <ul className="acct-list" aria-label="Accounts to freeze">
                         {plan.chokepoint.accounts.map((a) => (
                           <li key={a}>
                             <span className="mono">{a}</span>
                             <span className="acct-hop">{view?.nodes.find((n) => n.id === a)?.depth ?? '?'} hop{view?.nodes.find((n) => n.id === a)?.depth === 1 ? '' : 's'} out</span>
-                            {plan.chokepoint.traced_in_usd_cents && <span className="acct-amt" title="Most this account received from the alerted account's downstream network in the window">{usd2(plan.chokepoint.traced_in_usd_cents[a] ?? 0)} in</span>}
+                            {plan.chokepoint.traced_in_usd_cents && <span className="acct-amt" title="Most this account received from the alerted account's downstream network in the window">{usd2(plan.chokepoint.traced_in_usd_cents[a] ?? 0)} received</span>}
                           </li>
                         ))}
                       </ul>
@@ -541,7 +546,7 @@ export default function App() {
                       <p className="note timing-line">
                         <strong>Timing check:</strong>{' '}
                         {plan.time_ordered.has_time_ordered_route
-                          ? `${plan.time_ordered.time_ordered_pairs} of ${plan.time_ordered.transfer_pairs} links can carry money in time order; the freeze needs ${plan.time_ordered.count} account${plan.time_ordered.count === 1 ? '' : 's'}${plan.time_ordered.count === plan.chokepoint.count ? ', the same as above' : ` (${plan.chokepoint.count} above)`}.`
+                          ? `${plan.time_ordered.time_ordered_pairs} of ${plan.time_ordered.transfer_pairs} links can carry money in time order; the freeze needs ${plan.time_ordered.count} account${plan.time_ordered.count === 1 ? '' : 's'}${sameSet ? ', the same accounts as above' : ` (${plan.chokepoint.count} above; ${plan.time_ordered.accounts.length === 0 ? 'none needed' : plan.time_ordered.accounts.every((a) => plan.chokepoint.accounts.includes(a)) ? 'a subset' : 'a different set'})`}.`
                           : 'none of the routes works in time order here, so the recorded timing would not have let this money leave. Details in Compare.'}
                       </p>
                     )}
@@ -570,15 +575,18 @@ export default function App() {
               </div>
             )}
             {finalText && (
-              <p className="narrative">
-                {finalText}
+              <div className="narrative">
+                <p className={`summary${fullSummary ? '' : ' clamp'}`}>{finalText}</p>
+                {finalText.length > 320 && (
+                  <button className="link-btn" aria-expanded={fullSummary} onClick={() => setFullSummary((v) => !v)}>{fullSummary ? 'Show less' : 'Read the full summary'}</button>
+                )}
                 {unmatched && !unmatched.faithful && (
                   <span className="banner" role="note"><span className="ico" aria-hidden>!</span><span>This summary mentions a figure that no tool returned ({[...unmatched.unmatched_amounts, ...unmatched.unmatched_accounts].join(', ')}). Rely on the cards and tables, not the text.</span></span>
                 )}
                 <span className="note block">
                   {cachedRun ? 'Replay: this is a saved run, not a live response. ' : ''}The model writes the words; the numbers on the cards come from the tools, and this summary is checked against them.
                 </span>
-              </p>
+              </div>
             )}
             {resumed && !refresh && <p className="note">Resumed from a saved case; nothing was recomputed.</p>}
             {info?.has_newer_data && (
