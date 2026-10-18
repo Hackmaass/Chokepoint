@@ -36,3 +36,6 @@ STATUS.md
 
 # the small example slice is committed on purpose (see scripts/make_slice.py)
 !examples/slice/*.csv
+
+# design-inspection working files
+.taste-skill/
