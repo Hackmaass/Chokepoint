@@ -2,7 +2,7 @@
 
 **An investigation agent on FalkorDB that works out the few accounts whose freeze cuts every route stolen money could have taken, checks on a copy of the graph that no route is left in the recorded transfers, lets a person approve the plan, and keeps a receipt for every answer.**
 
-Built for [Graph Hacks: Context for AI Agents](https://www.wemakedevs.org/hackathons/falkordb) (WeMakeDevs x FalkorDB, Oct 15-18 2026). **Track 1: Agents that act on connected data.** Solo entry.
+Built for [Graph Hacks: Context for AI Agents](https://www.wemakedevs.org/hackathons/falkordb) (WeMakeDevs x FalkorDB, Oct 15-18 2026). **Tracks: 1, Agents that act on connected data (primary), and 2, Agent memory and coordination.** Solo entry.
 
 > Live demo: **<https://chokepoint-uou2.onrender.com/>** (a free host: the first load after idle can take about a minute) · Demo video: _to be added_ · Blog post: _to be added_
 
@@ -63,6 +63,15 @@ Live-agent evaluation on 120 cases from both halves of the patterns (details, an
 
 - **Late or back-dated transfers** (`refresh_case`): each saved finding is linked to the accounts its tool run read, so one traversal finds the findings a new transfer touches; only those are re-run, old ones are marked superseded and linked to their replacements, the rest are carried forward. On 40 held-out cases with four kinds of late batch, the refreshed answers equalled a full recomputation in **40/40**, the scope rule **missed no change**, and it re-ran 50% of the findings (savings come from late data that does not touch the case; touched cases re-run everything, half of which was unchanged). [`docs/ripple-eval.md`](docs/ripple-eval.md)
 - **An auditor agent** shares state with the investigator only through the graph: it reads the stored case and plan, runs deterministic checks, and records a verdict as a finding that appears when the case is resumed. Code refuses an "agree" while a blocking check (verified, current, actionable, no routes left) fails.
+
+### Track 2: memory and coordination
+
+Chokepoint is entered in Track 2 as well. Where the product does it, and where it stops:
+
+- **Memory lives in the graph.** Every result is a `Finding` linked to the `ToolCall` that produced it, the parameters, the data version and the accounts it read. A case opened in a later session is resumed from those nodes (`resume_case`), not recomputed, and `explain_finding` answers "why do you believe this" by traversal.
+- **Coordination through shared state.** The auditor agent sees only what the investigator stored in the graph, never its messages. It runs deterministic checks and writes its verdict back as a finding, and code refuses an "agree" while a blocking check fails. A person's approval is a `FreezeOrder` in the same graph, tied to the plan and refused once newer transfers exist.
+- **Memory that knows when it is stale.** Late or back-dated transfers mark only the findings that read the touched accounts as stale; old findings are kept and linked to their replacements (the ripple evaluation is in [`docs/ripple-eval.md`](docs/ripple-eval.md)).
+- **Limits.** Memory is per case: nothing the investigator or the person decides changes how a later case is planned. The auditor shares state with the investigator but there is no negotiation between agents, and both are driven by the same fixed tools.
 
 ## Why FalkorDB
 

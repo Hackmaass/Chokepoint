@@ -1,5 +1,7 @@
 # For judges: a 60-second path
 
+Entered in Track 1 (agents that act on connected data) and Track 2 (agent memory and coordination: case memory and receipts in the graph, an auditor that coordinates only through shared state, and findings that go stale when late data arrives).
+
 Chokepoint answers one question after an alert: **where can the stolen money still go, and which few accounts do we freeze to
 stop it?** It then checks its own plan and keeps a receipt. Everything below uses synthetic data.
 
