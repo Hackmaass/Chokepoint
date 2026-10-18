@@ -11,6 +11,7 @@ Built for [Graph Hacks: Context for AI Agents](https://www.wemakedevs.org/hackat
 The on-time submission is the tag [`graphhacks-ontime-submission`](https://github.com/Hackmaass/Chokepoint/releases/tag/graphhacks-ontime-submission) (commit `42465d7`, Oct 18 2026, 22:51 IST). Everything below was added afterwards on the `late-window` branch and is listed here so nothing is hidden; `git log graphhacks-ontime-submission..late-window` shows the exact commits.
 
 - **Organizers' answer:** the author confirmed with the organizers that on-time entrants may update their submission, so this branch was merged to `main` and the live demo redeployed from it. The tag above is still the exact on-time version.
+- **Max-flow repaired inside FalkorDB** (`src/chokepoint/algo/residual.py`, `solve` in `algo/cut.py`): a failed certificate no longer falls back to NetworkX; Edmonds-Karp runs on a residual scratch graph in FalkorDB. The 11-edge repro: first pass 300, certificate fails, repair 453, label `falkordb+repair`. 300+ new random node-split networks match the exact oracle with 0 `networkx-emergency` (`tests/test_cut_oracle.py`, a new seed range, not the held-out set). The route checks in `toolbox.py` use `algo.BFS` instead of NetworkX. Plans for the 8 examples are unchanged; median open-case-to-verified-plan time on the 8 examples went 0.34 s to 0.36 s (measured side by side on the same machine).
 - **Dispatcher** (`src/chokepoint/dispatch.py`): after a named person approves a verified plan, holds are placed on the frozen accounts in the graph and one freeze request is filed as a GitHub issue in a public ops repo (synthetic data, no bank is called). One issue per plan hash; if GitHub is unreachable or no token is set the dispatch stays `queued` and the UI says so. An order can be withdrawn by a named person, which lifts the holds. It is not a tool, not in MCP, and the model cannot reach it (tests assert this).
 - **Live agent by default when the server has a model key** (`NVIDIA_API_KEY`): the visitor can type their own question about an example alert. If the model is rate-limited or down, the run says "Live model unavailable right now, showing a recorded run" and plays the saved run for that alert (a custom question has no saved run and reports the failure). Tested with a mocked 429.
 - **Keep-warm ping** (`.github/workflows/keepwarm.yml`): inactive until merged to `main`, because GitHub runs scheduled workflows only from the default branch.
@@ -88,12 +89,12 @@ Chokepoint is entered in Track 2 as well. Where the product does it, and where i
 | Role | How the graph is used |
 |---|---|
 | Storage and traversal | 4.49 million transfers over 422,734 accounts as `(:Account)-[:TRANSFER]->(:Account)`; per-hop frontier queries with indexes on `Account.id` and `TRANSFER.ts` |
-| Algorithm | `algo.maxFlow` on a node-split network, used as a **certified first pass** (see below) |
+| Algorithm | `algo.maxFlow` on a node-split network as a **certified first pass**; a failed certificate is **repaired in FalkorDB** (residual graph + `shortestPath`, cut from `algo.BFS`), then certified again |
 | Verification | `GRAPH.COPY`, `DELETE` of the frozen accounts, then `shortestPath` to every perimeter account |
 | Memory and provenance | `Case`, `ToolCall`, `Finding`, `FreezePlan` nodes linked to the accounts they read; `resume_case` and `explain_finding` are traversals |
 | Isolation | labels live in a separate `eval_ibm` graph that no planning tool can read; scratch graphs `case_<id>_run_<n>` are disposable |
 
-Remove FalkorDB and the transfers, the per-hop region queries, the copy check and the case memory are gone. The exact fallback solver is NetworkX, so the cut itself does not need FalkorDB: what the graph supplies is the data and the queries over it, a first-pass max-flow, an independent check, and a home for receipts and memory in the same graph (a removal test, with its limit, is in [`docs/for-judges.md`](docs/for-judges.md)).
+Remove FalkorDB and the transfers, the per-hop region queries, the max-flow, the repair of its wrong answers, the route checks, the copy check and the case memory are gone. Since the late-submission build the solver itself runs in FalkorDB: `algo.maxFlow` is the first pass, and when its answer fails the certificate it is **repaired inside the database** (Edmonds-Karp on a residual scratch graph, using `shortestPath` for each augmenting path and `algo.BFS` for the cut). The route checks use `algo.BFS` on a scratch graph too. NetworkX remains only as a test oracle and as an emergency path labelled `networkx-emergency`, which `scripts/judge_check.py` counts (0 on the batch it runs). Measured by `judge_check.py`: every max-flow on the new random networks and on the 8 examples is certified, the solver label says whether the first pass or the repair produced it, and the plans for the 8 examples are unchanged (`tests/test_replays.py`).
 
 ### A FalkorDB finding
 
@@ -176,7 +177,7 @@ graph TD
   MCP[MCP server] --> TB
   AG -- OpenAI-compatible --> LLM[NVIDIA Nemotron free API]
   TB -- Cypher, algo.maxFlow, GRAPH.COPY --> DB[(FalkorDB)]
-  TB -. exact fallback .-> NX[NetworkX]
+  TB -. test oracle and emergency path only .-> NX[NetworkX]
 ```
 
 - **Agent**: a manual tool loop with the decision rules in the system prompt; recorded runs can be replayed (the UI labels them). Model: `nvidia/nemotron-3-super-120b-a12b` through NVIDIA's free OpenAI-compatible endpoint, behind a provider-neutral client with an app-side rate limit.

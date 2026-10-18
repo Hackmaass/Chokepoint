@@ -178,7 +178,25 @@ for _, p, _ in rows:
     k = p["chokepoint_plan"]["solver"]
     solvers[k] = solvers.get(k, 0) + 1
 line("INFO", "MEASURED  solver recorded in the 8 example plans: " + ", ".join(f"{k} x{n}" for k, n in sorted(solvers.items())),
-     "consistent with the line above when every plan says falkordb")
+     "every plan says falkordb when FalkorDB's first pass was certified, falkordb+repair when it was repaired in the database")
+
+# 5b2. the in-database repair: a new batch of random node-split networks (seeds 1000+, labelled new; not the held-out set)
+from chokepoint.algo.cut import reaches_exit, solve  # noqa: E402
+
+labels: dict[str, int] = {}
+mismatch = 0
+t0 = time.time()
+for seed in range(1000, 1000 + args.networks):
+    net = random_net(seed)
+    if not reaches_exit(net):
+        continue
+    got = solve(db, net, f"judge_check_fix_{seed}")
+    labels[got.solver] = labels.get(got.solver, 0) + 1
+    mismatch += got.value != solve_networkx(net).value or not certify(net, got)
+n_solved = sum(labels.values())
+line("PASS" if not mismatch and not labels.get("networkx-emergency") else "FAIL",
+     f"MEASURED  every max-flow is certified inside FalkorDB: {n_solved} new random networks, 0 wrong, 0 networkx-emergency",
+     "solver labels: " + ", ".join(f"{k} x{n}" for k, n in sorted(labels.items())) + f" ({time.time() - t0:.0f}s); NetworkX is only the oracle here")
 
 # 5c. an approval cannot outlive its evidence, and the model cannot give one
 first_plan = rows[0][1]["plan_id"]

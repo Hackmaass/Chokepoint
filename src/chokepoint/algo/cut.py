@@ -9,7 +9,9 @@ FalkorDB returns a max-flow value and edge flows, not a cut, and on some node-sp
 flow is not maximal and violates conservation (see ``docs/falkordb-maxflow-findings.md``). So a
 FalkorDB result is accepted only with a certificate (feasible flow, and no sink reachable in the
 residual graph, which by max-flow/min-cut duality proves optimality). Anything else (error,
-timeout, empty result, failed certificate) falls back to an exact NetworkX solve.
+timeout, empty result, failed certificate) is repaired inside FalkorDB (``residual.py``: Edmonds-Karp on a
+residual scratch graph with ``shortestPath``) and certified again; NetworkX is only the test oracle and an
+emergency path, labelled "networkx-emergency", for when the in-database repair itself fails.
 
 All capacities are integers. INF = sum of finite capacities + 1 (a huge constant would break
 FalkorDB's capacity-range rule ``max < min * 2^32``).
@@ -17,18 +19,22 @@ FalkorDB's capacity-range rule ``max < min * 2^32``).
 
 from __future__ import annotations
 
+import logging
 from collections import deque
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Literal
 
 import networkx as nx
 
+from .residual import repair_in_db
+
+log = logging.getLogger("chokepoint.cut")
 IN, OUT = ":in", ":out"
 MAX_CAP_RATIO = 2**32
 SINK = "__SINK__"
 
-Solver = Literal["falkordb", "networkx-fallback"]
+Solver = Literal["falkordb", "falkordb+repair", "networkx-fallback", "networkx-emergency"]
 
 
 class NoFiniteCut(Exception):
@@ -145,6 +151,7 @@ class FlowResult:
     value: int
     flows: dict[tuple[str, str], int]  # positive-flow edges only
     solver: Solver = "falkordb"
+    reach: frozenset[str] | None = None  # residual-reachable nodes, when the database computed them (repair path)
 
 
 # ---------------------------------------------------------------------------
@@ -250,13 +257,9 @@ def _residual_reach(net: SplitNetwork, flows: dict[tuple[str, str], int]) -> set
     return reach
 
 
-def certify(net: SplitNetwork, result: FlowResult) -> bool:
-    """True iff ``result`` is a feasible flow whose value is provably the maximum.
-
-    Feasible: every flow edge exists, 0 < flow <= capacity, flow is conserved at every node other
-    than the source and the sinks, and the value equals the net flow into the sinks and out of the
-    source. Maximal: no sink is reachable from the source in the residual graph.
-    """
+def is_feasible(net: SplitNetwork, result: FlowResult) -> bool:
+    """Every flow edge exists, 0 < flow <= capacity, flow is conserved at every node other than the source and
+    the sinks, and the value equals the net flow into the sinks and out of the source."""
     sinks = set(net.sink_nodes)
     inflow: dict[str, int] = {}
     outflow: dict[str, int] = {}
@@ -274,9 +277,13 @@ def certify(net: SplitNetwork, result: FlowResult) -> bool:
     if outflow.get(net.source_node, 0) - inflow.get(net.source_node, 0) != result.value:
         return False
     into_sinks = sum(inflow.get(s, 0) - outflow.get(s, 0) for s in sinks)
-    if into_sinks != result.value:
-        return False
-    return not (_residual_reach(net, result.flows) & sinks)
+    return into_sinks == result.value
+
+
+def certify(net: SplitNetwork, result: FlowResult) -> bool:
+    """True iff ``result`` is a feasible flow whose value is provably the maximum: feasible (is_feasible), and no
+    sink is reachable from the source in the residual graph (max-flow/min-cut duality)."""
+    return is_feasible(net, result) and not (_residual_reach(net, result.flows) & set(net.sink_nodes))
 
 
 @dataclass(frozen=True)
@@ -289,9 +296,10 @@ class FlowNetwork:
 
 
 def solve(db, net: SplitNetwork | FlowNetwork, graph_name: str) -> FlowResult:
-    """FalkorDB first, accepted only with a certificate; otherwise exact NetworkX.
-
-    A capacity range FalkorDB cannot take (max >= min * 2^32) goes straight to the exact solver.
+    """FalkorDB first, accepted only with a certificate. If the certificate fails (or FalkorDB gives no answer, or the
+    capacity range is one it cannot take) the flow is repaired inside FalkorDB (residual graph + shortestPath), starting
+    from FalkorDB's flow when that flow is at least feasible, from nothing otherwise, and certified again. NetworkX runs
+    only if the in-database repair itself fails, and is labelled "networkx-emergency" so it is counted and shown.
     """
     try:
         got = run_falkordb_maxflow(db, net, graph_name) if db is not None else None
@@ -299,12 +307,20 @@ def solve(db, net: SplitNetwork | FlowNetwork, graph_name: str) -> FlowResult:
         got = None
     if got is not None and certify(net, got):
         return got
-    return solve_networkx(net)
+    if db is None:
+        return solve_networkx(net)
+    try:
+        fixed = repair_in_db(db, net, got.flows if got is not None and is_feasible(net, got) else {}, graph_name + "_res")
+        if certify(net, fixed) and _residual_reach(net, fixed.flows) == fixed.reach:
+            return fixed
+    except Exception:
+        log.exception("in-database repair failed on %s; using the exact solver", graph_name)
+    return replace(solve_networkx(net), solver="networkx-emergency")
 
 
 def extract_cut(net: SplitNetwork, result: FlowResult) -> frozenset[str]:
     """Client-side cut extraction: split edges leaving the residual-reachable set."""
-    reach = _residual_reach(net, result.flows)
+    reach = result.reach if result.reach is not None else _residual_reach(net, result.flows)
     special = {net.source, *net.exits}
     return frozenset(
         a for a in net.accounts

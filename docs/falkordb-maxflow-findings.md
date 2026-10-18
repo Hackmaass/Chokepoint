@@ -44,8 +44,11 @@ the trigger needs the longer path (length 7) alongside the shorter ones.
 1. The product never trusts the raw `algo.maxFlow` result. A result is accepted only if the
    returned flow is feasible (capacities and conservation) **and** the sink is unreachable in the
    residual graph (max-flow/min-cut certificate: flow value equals the cut capacity).
-2. Otherwise the cut is computed exactly in NetworkX on the same network, and the result records
-   which solver produced it (`solver: "falkordb" | "networkx-fallback"`).
+2. Otherwise the flow is repaired inside FalkorDB (`src/chokepoint/algo/residual.py`): a residual scratch graph is built from
+   the network and, when it is at least feasible, FalkorDB's flow; each round asks `shortestPath` for an augmenting path over
+   edges with residual capacity and updates them with parameterised Cypher; the cut comes from one `algo.BFS` on the final
+   residual graph. The result is certified again and records which solver produced it (`solver: "falkordb" |
+   "falkordb+repair" | "networkx-emergency"`). NetworkX runs only if the repair itself fails (counted; 0 so far) and as the test oracle.
 3. FalkorDB stays load-bearing for storage, windowed extraction, traversal, provenance,
    `GRAPH.COPY`-based verification with `shortestPath`, and the graph algorithms used as tools.
 4. The test suite keeps a regression test on the minimal case, so a future FalkorDB fix is noticed.

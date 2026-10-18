@@ -241,7 +241,7 @@ export default function Landing() {
               <h3>It checked its own database</h3>
               <p>
                 On 12 to 17% of the random node-split networks we generated (two batches), FalkorDB’s <code>algo.maxFlow</code> returned a flow that was not maximal. We wrote an 11-edge repro, and now accept
-                its answer only with a certificate; otherwise an exact solver runs. In testing, 0 false accepts across 120 random networks.
+                its answer only with a certificate; otherwise the flow is repaired inside FalkorDB and certified again. In testing, 0 false accepts across 120 random networks, and 300+ new networks solved with 0 wrong answers and no fallback to NetworkX.
               </p>
             </article>
             <article className="diff-c" data-reveal>

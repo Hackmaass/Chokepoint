@@ -82,7 +82,7 @@ def test_money_that_reached_an_exit_does_not_come_back():
 def test_random_graphs_final_plans_match_networkx(db):
     """Whatever solver answers, the plan equals the exact optimum and really cuts every route."""
     outcomes = {"cut": 0, "no_finite_cut": 0, "no_path": 0}
-    solvers = {"falkordb": 0, "networkx-fallback": 0}
+    solvers: dict[str, int] = {}
     for seed in SEEDS:
         net = random_case(seed)
         want = solve_networkx(net).value
@@ -101,8 +101,9 @@ def test_random_graphs_final_plans_match_networkx(db):
         assert not reaches_exit(net, plan.frozen), f"seed {seed}: frozen set leaves a route"
         assert net.source not in plan.frozen and not (set(net.exits) & plan.frozen)
         outcomes["cut"] += 1
-        solvers[plan.solver] += 1
+        solvers[plan.solver] = solvers.get(plan.solver, 0) + 1
     assert all(v >= 5 for v in outcomes.values()), outcomes
+    assert not solvers.get("networkx-emergency"), solvers
     print("outcomes", outcomes, "solvers", solvers)
 
 
@@ -178,3 +179,38 @@ def test_certify_rejects_bad_flows():
     assert not certify(net, over)
     # empty flow on a connected network is not maximal
     assert not certify(net, FlowResult(0, {}, "falkordb"))
+
+
+NEW_SEEDS = range(1000, 1450)  # a new batch, labelled as such: not the seeds above and not the held-out evaluation
+
+
+@pytest.mark.timeout(900)
+def test_in_database_repair_matches_networkx_on_300_plus_new_networks(db):
+    """Value and cut cost equal the exact oracle on every network, and NetworkX is never needed to get there."""
+    from chokepoint.algo.cut import solve
+
+    labels: dict[str, int] = {}
+    for seed in NEW_SEEDS:
+        net = random_case(seed)
+        if not reaches_exit(net):
+            continue
+        got = solve(db, net, f"test_repair_{seed}")
+        labels[got.solver] = labels.get(got.solver, 0) + 1
+        assert got.value == solve_networkx(net).value, f"seed {seed}: {got.solver} gave {got.value}"
+        assert certify(net, got), f"seed {seed}"
+    assert sum(labels.values()) >= 300, labels
+    assert not labels.get("networkx-emergency"), labels
+    assert labels.get("falkordb+repair", 0) >= 5 and labels.get("falkordb", 0) >= 40, labels  # both paths are exercised
+    print("solver labels on 300+ new networks:", labels)
+
+
+def test_the_repro_is_repaired_in_the_database(db):
+    from chokepoint.algo.cut import solve
+
+    net = _repro_network()
+    raw = run_falkordb_maxflow(db, net, "test_repair_raw")
+    if raw is not None and raw.value == 453:
+        pytest.skip("FalkorDB now answers the repro correctly (the strict xfail above will say so)")
+    assert raw is None or not certify(net, raw)
+    got = solve(db, net, "test_repair_repro")
+    assert (got.value, got.solver) == (453, "falkordb+repair") and certify(net, got)

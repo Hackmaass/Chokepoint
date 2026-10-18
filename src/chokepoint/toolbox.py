@@ -18,7 +18,6 @@ from calendar import timegm
 from collections import defaultdict
 from datetime import datetime, timezone
 
-import networkx as nx
 from redis.exceptions import ResponseError
 
 from . import dispatch as dispatcher
@@ -247,15 +246,40 @@ class Toolbox:
         self._write("MATCH (f:Finding {id: $f}) SET f.complete = true", {"f": finding_id})
 
     # ------------------------------------------------------------------ tools
+    def _reach(self, pairs, origin: str, perimeter) -> tuple[set[str], set[str]]:
+        """Accounts reachable from ``origin`` and accounts that can reach the perimeter, computed in FalkorDB on a
+        scratch graph with ``algo.BFS`` (forward edges T, reversed edges B, one helper node pointing at the perimeter)."""
+        helper = "__P__"
+        perimeter = sorted(perimeter)
+        ids = sorted({a for e in pairs for a in e} | {origin, helper, *perimeter})
+        scratch = self.db.select_graph(f"reach_{uuid.uuid4().hex[:8]}")
+        try:
+            scratch.query("CREATE INDEX FOR (a:A) ON (a.id)")
+            scratch.query("UNWIND $ids AS i CREATE (:A {id: i})", params={"ids": ids})
+            rows = [{"s": s_, "d": d_} for (s_, d_) in pairs]
+            for i in range(0, len(rows), 5000):
+                scratch.query("UNWIND $rows AS r MATCH (a:A {id: r.s}), (b:A {id: r.d}) CREATE (a)-[:T]->(b), (b)-[:B]->(a)",
+                              params={"rows": rows[i : i + 5000]})
+            scratch.query("UNWIND $p AS p MATCH (h:A {id: $h}), (a:A {id: p}) CREATE (h)-[:B]->(a)", params={"p": perimeter, "h": helper})
+            bfs = "MATCH (s:A {id: $s}) CALL algo.BFS(s, -1, $rel) YIELD nodes RETURN [n IN nodes | n.id]"
+            rs = scratch.ro_query(bfs, params={"s": origin, "rel": "T"}).result_set  # no row when nothing is reachable
+            fwd = rs[0][0] if rs else []
+            rs = scratch.ro_query(bfs, params={"s": helper, "rel": "B"}).result_set
+            back = rs[0][0] if rs else []
+        finally:
+            try:
+                scratch.delete()
+            except Exception:
+                pass
+        return set(fwd) | {origin}, set(back) - {helper}
+
     def _case_or_none(self, case_id: str) -> dict | None:
         res = self.g.ro_query("MATCH (c:Case {id: $id}) RETURN c", params={"id": case_id}).result_set
         return dict(res[0][0].properties) if res else None
 
     def _region_result(self, case_id: str, case: dict, region: Region, started: float) -> dict:
         perimeter, trans, _ = self._network_parts(region)
-        plain = nx.DiGraph(list(trans))
-        has_route = bool(perimeter) and region.origin in plain and any(
-            p in plain and nx.has_path(plain, region.origin, p) for p in perimeter)
+        has_route = bool(perimeter) and bool(self._reach(list(trans), region.origin, perimeter)[0] & set(perimeter))
         value = {"accounts": len(region.depth), "transfer_pairs": len(trans), "first_hop": len(region.hop1),
                  "perimeter_accounts": len(perimeter), "has_route_to_perimeter": has_route}
         tc, f = self._record(
@@ -382,12 +406,7 @@ class Toolbox:
         rule = self._rule_of_thumb(region, trans, freezable, k)
 
         # on a route from the alerted account to the perimeter?
-        g = nx.DiGraph(list(trans))
-        reach = nx.descendants(g, region.origin) | {region.origin}
-        anc = set()
-        for p in perimeter:
-            if p in g:
-                anc |= nx.ancestors(g, p) | {p}
+        reach, anc = self._reach(list(trans), region.origin, perimeter)
         onroute = reach & anc
         # money each account received from the alerted account's downstream network in the window; an upper bound on
         # what a hold would have to cover (the dataset has no balances, so this is not a share of any balance)

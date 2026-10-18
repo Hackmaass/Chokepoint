@@ -40,7 +40,7 @@ def test_open_case_returns_summary_and_stores_case(tb, good_case):
 def test_flow_is_positive_and_recorded(tb, good_case):
     r = tb.call("flow", {"case_id": good_case["case_id"]})
     assert r["max_movable_usd_cents"] > 0 and r["finding_id"].startswith("f-")
-    assert r["top_flow_edges"] and r["solver"] in ("falkordb", "networkx-fallback")
+    assert r["top_flow_edges"] and r["solver"] in ("falkordb", "falkordb+repair")
 
 
 def test_freeze_plan_cuts_everything_and_beats_the_rule_of_thumb_guarantee(tb, good_case):

@@ -52,13 +52,13 @@ The no-graph arm is the rule of thumb an analyst would use without one: freeze t
 at the same number of accounts. On the held-out half it blocked about the same share of escaped laundering (difference -0.002,
 95% interval [-0.09, +0.08]) and was less precise (+0.19 for the cut, [+0.07, +0.32]). It could not tell when it was done: to leave no
 route it needed more accounts than the minimum cut in 64% of cases (median 3 against 1, `guarantee-and-latency.md`). So what the
-graph-backed plan adds is the guarantee, the precision and the receipt, not a larger blocked share. This shows the plan, not any
-particular database, carries those gains: another database could hold the same graph. What FalkorDB supplies here is the per-hop
-queries over 4.5 million transfers, the first-pass max-flow, the independent `GRAPH.COPY` check and a home for the receipts and case
-memory in the same graph.
+graph-backed plan adds is the guarantee, the precision and the receipt, not a larger blocked share. What FalkorDB supplies here is the per-hop
+queries over 4.5 million transfers, the max-flow and its in-database repair (`algo/residual.py`), the route checks (`algo.BFS`), the
+independent `GRAPH.COPY` check and a home for the receipts and case memory in the same graph. NetworkX appears only in tests as an
+oracle (and as a counted `networkx-emergency` path that has not been needed in any measured batch).
 
 On the 8 real example networks FalkorDB's max-flow was right every time and every plan used it (`judge_check.py`), so on these
-cases the exact fallback was not needed; it is there for the 12 to 17% of random networks where the raw answer is wrong.
+cases the repair was not needed; it is there for the 12 to 17% of random networks where the raw answer is wrong, and `judge_check.py` shows it solving those inside FalkorDB.
 
 ## Check every number in one command
 
@@ -97,7 +97,7 @@ and the original protocol (`docs/pilot-results.md`).
 | Memory across sessions | Header menu "Resume a saved case…"; `resume_case`; late data via `refresh_case` (`docs/ripple-eval.md`) |
 | A second agent sharing state | The auditor reads only what is in the graph (`audit_checks`, `submit_audit`); code refuses "agree" while a blocking check fails |
 | Rigour of the numbers | `docs/pilot-protocol.md` (written before the held-out run), `docs/pilot-results.md`, `docs/guarantee-and-latency.md` |
-| A FalkorDB finding | `docs/falkordb-maxflow-findings.md`: `algo.maxFlow` returns a non-maximal flow on 12 to 17% of random node-split networks (two batches); results are accepted only with a certificate, otherwise an exact solver runs |
+| A FalkorDB finding | `docs/falkordb-maxflow-findings.md`: `algo.maxFlow` returns a non-maximal flow on 12 to 17% of random node-split networks (two batches); results are accepted only with a certificate, otherwise the flow is repaired inside FalkorDB |
 
 ## What the public demo does not show
 
