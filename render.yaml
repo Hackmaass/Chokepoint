@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: chokepoint
+    runtime: docker
+    dockerfilePath: ./Dockerfile.hosted
+    plan: free
+    healthCheckPath: /api/health
