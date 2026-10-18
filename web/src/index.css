@@ -510,6 +510,7 @@ th.num { text-align: right; }
 .alt-list li { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 13px; line-height: 20px; color: var(--ink-secondary); }
 .alt-list .mono { color: var(--ink-primary); }
 
-.connect { margin: 16px auto 0; max-width: 960px; padding: 0 16px; color: var(--ink-secondary); font-size: 13px; }
-.connect summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
-.connect pre { overflow-x: auto; padding: 10px 12px; margin: 6px 0 0; border: 1px solid var(--line, rgba(128,128,128,.3)); border-radius: 6px; font-size: 12px; line-height: 18px; color: var(--ink-primary); }
+.connect { position: relative; display: inline-block; }
+.connect summary { cursor: pointer; list-style: none; color: var(--ink-secondary); text-decoration: underline; text-underline-offset: 3px; min-height: 44px; display: inline-flex; align-items: center; }
+.connect-pop { position: absolute; right: 0; bottom: 100%; z-index: 30; width: min(460px, 86vw); padding: 12px 14px; background: var(--surface-1); border: 1px solid var(--line-baseline); border-radius: 8px; text-align: left; box-shadow: 0 8px 28px rgba(0,0,0,.35); }
+.connect-pop pre { overflow-x: auto; padding: 8px 10px; margin: 6px 0 0; border: 1px solid var(--line-baseline); border-radius: 6px; font-size: 12px; line-height: 18px; color: var(--ink-primary); }

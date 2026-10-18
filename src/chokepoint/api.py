@@ -364,6 +364,15 @@ def resume(case_id: str) -> dict:
     return result
 
 
+@app.get("/api/cases/{case_id}/chain")
+def case_chain(case_id: str) -> dict:
+    """The case's hash-chained receipt records, for the browser to re-verify with WebCrypto."""
+    try:
+        return {"records": toolbox().chain(case_id)}
+    except ToolError as e:
+        return error_response(404 if e.code.startswith("UNKNOWN") else 400, e.code, e.message, e.hint)
+
+
 @app.get("/api/cases/{case_id}/graph")
 def graph(case_id: str, plan_id: str | None = None) -> dict:
     try:

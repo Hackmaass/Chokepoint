@@ -244,6 +244,10 @@ async function open(viewport, intercept) {
   } else {
     check(await page.getByText(/Queued, not sent/).isVisible(), 'dispatch: with no token the card says queued, not sent')
   }
+  await page.getByRole('tab', { name: /Receipt/ }).click()
+  await page.getByRole('button', { name: 'Verify chain' }).click()
+  await page.getByText(/every link matches/).waitFor({ timeout: 10000 })
+  check(true, 'receipts: the hash chain re-verifies in the browser (WebCrypto)')
   const toolReply = await page.evaluate(() => fetch('/api/tools/order_freeze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then((r) => r.status))
   check(toolReply === 404, 'approval: the model-facing tool route does not know it')
   await ctx.close()

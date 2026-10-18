@@ -42,6 +42,7 @@ from .casegraph import (
     time_ordered_pairs,
     transfer_times,
 )
+from .chain import canon, chain_hash
 
 DAY = 1440
 DEFAULT_WINDOW_DAYS = 7
@@ -212,6 +213,9 @@ class Toolbox:
         key = key or kind
         tc_id = _det("tc", case_id, key, region.data_version, salt)
         f_id = _det("f", case_id, key, region.data_version, salt)
+        params_json, value_json = json.dumps(params, sort_keys=True), json.dumps(value, sort_keys=True)
+        tc_hash = chain_hash(canon("tc", tc_id, tool, params_json, region.data_version, solver), "")
+        f_hash = chain_hash(canon("f", f_id, kind, key, value_json, region.data_version), tc_hash)
         row = self.g.ro_query("MATCH (f:Finding {id: $f}) RETURN coalesce(f.complete, true)", params={"f": f_id}).result_set
         if row and row[0][0]:
             return tc_id, f_id  # identical result already recorded: idempotent
@@ -224,15 +228,15 @@ class Toolbox:
         self._write(
             "MATCH (c:Case {id: $case_id}) "
             "CREATE (tc:ToolCall {id: $tc, tool: $tool, params: $params, data_version: $dv, solver: $solver, "
-            "ran_at: $now, duration_ms: $ms}) "
+            "ran_at: $now, duration_ms: $ms, hash: $tch, parent_hash: ''}) "
             "CREATE (tc)-[:RUN_IN]->(c) "
             "CREATE (f:Finding {id: $f, kind: $kind, key: $key, value: $value, status: 'current', version: $ver, "
-            "data_version: $dv, complete: $complete}) "
+            "data_version: $dv, complete: $complete, hash: $fh, parent_hash: $tch}) "
             "CREATE (tc)-[:PRODUCED]->(f) CREATE (c)-[:HAS]->(f)",
-            {"case_id": case_id, "tc": tc_id, "tool": tool, "params": json.dumps(params, sort_keys=True),
+            {"case_id": case_id, "tc": tc_id, "tool": tool, "params": params_json, "tch": tc_hash, "fh": f_hash,
              "dv": region.data_version, "solver": solver, "now": int(time.time()),
              "ms": int((time.perf_counter() - started) * 1000), "f": f_id, "kind": kind, "key": key, "complete": False,
-             "value": json.dumps(value, sort_keys=True), "ver": version},
+             "value": value_json, "ver": version},
         )
         for i in range(0, len(scope), 500):  # chunked: thousands of READ edges in one query can time out
             self._write("MATCH (tc:ToolCall {id: $tc}) UNWIND $scope AS acct "
@@ -447,11 +451,13 @@ class Toolbox:
         scope = [a for a, d in region.depth.items() if d < hops]
         tc, f = self._record(case_id, "freeze_plan", {"case_id": case_id, "lambda_weight": lam, "perimeter_hops": hops},
                              region, plan.solver, "freeze_plan", result, started, scope, key=key, complete=False)
+        f_hash = self.g.ro_query("MATCH (f:Finding {id: $f}) RETURN f.hash", params={"f": f}).result_set[0][0]
+        p_hash = chain_hash(canon("p", plan_id, int(plan.cost), lam, k, hops, frozen), f_hash)
         self._write(
             "MATCH (f:Finding {id: $f}) "
-            "CREATE (p:FreezePlan {id: $p, cost: $cost, lambda: $lam, size: $k, hops: $hops, verified: false}) "
-            "CREATE (f)-[:HAS_PLAN]->(p)",
-            {"f": f, "p": plan_id, "cost": int(plan.cost), "lam": lam, "k": k, "hops": hops})
+            "CREATE (p:FreezePlan {id: $p, cost: $cost, lambda: $lam, size: $k, hops: $hops, verified: false, hash: $h, "
+            "parent_hash: $fh}) CREATE (f)-[:HAS_PLAN]->(p)",
+            {"f": f, "p": plan_id, "cost": int(plan.cost), "lam": lam, "k": k, "hops": hops, "h": p_hash, "fh": f_hash})
         if frozen:
             self._write("MATCH (p:FreezePlan {id: $p}) UNWIND $fz AS acct MATCH (a:Account {id: acct}) "
                         "CREATE (p)-[:FREEZES]->(a)", {"p": plan_id, "fz": frozen})
@@ -555,6 +561,50 @@ class Toolbox:
         tc, f = self._record(info["case_id"], "verify_plan", {"plan_id": plan_id}, region, "falkordb-shortestPath",
                              "verification", result, started, [], key=f"verify:{plan_id}")
         return {**result, "finding_id": f, "tool_call_id": tc}
+
+    def chain(self, case_id: str) -> list[dict]:
+        """The case's receipt records, parents before children, each with the exact text its hash was made from (not a tool)."""
+        self._case(case_id)
+        rows = self.g.ro_query(
+            "MATCH (tc:ToolCall)-[:RUN_IN]->(:Case {id: $c}) OPTIONAL MATCH (tc)-[:PRODUCED]->(f:Finding) "
+            "OPTIONAL MATCH (f)-[:HAS_PLAN]->(p:FreezePlan) OPTIONAL MATCH (p)-[:ORDERED_AS]->(o:FreezeOrder) "
+            "OPTIONAL MATCH (o)-[:DISPATCHED_AS]->(d:Dispatch) RETURN tc, f, p, o, d ORDER BY tc.ran_at, tc.id",
+            params={"c": case_id}).result_set
+        plan_ids = {r[2].properties["id"] for r in rows if r[2]}
+        order_ids = {r[3].properties["id"] for r in rows if r[3]}
+        pacc = dict(self.g.ro_query("MATCH (p:FreezePlan)-[:FREEZES]->(a:Account) WHERE p.id IN $i RETURN p.id, collect(a.id)",
+                                    params={"i": list(plan_ids)}).result_set) if plan_ids else {}
+        oacc = dict(self.g.ro_query("MATCH (o:FreezeOrder)-[:FOR_ACCOUNT]->(a:Account) WHERE o.id IN $i RETURN o.id, collect(a.id)",
+                                    params={"i": list(order_ids)}).result_set) if order_ids else {}
+        out: list[dict] = []
+        seen: set[str] = set()
+
+        def add(kind: str, node, text: str, parent_id: str | None) -> None:
+            pr = node.properties
+            if pr["id"] in seen:
+                return
+            seen.add(pr["id"])
+            out.append({"type": kind, "id": pr["id"], "canon": text, "parent_id": parent_id, "hash": pr.get("hash", ""),
+                        "parent_hash": pr.get("parent_hash", "")})
+
+        for tc, f, p, o, d in rows:
+            t = tc.properties
+            add("ToolCall", tc, canon("tc", t["id"], t["tool"], t["params"], t["data_version"], t["solver"]), None)
+            if f:
+                fp = f.properties
+                add("Finding", f, canon("f", fp["id"], fp["kind"], fp["key"], fp["value"], fp["data_version"]), t["id"])
+            if p:
+                pp = p.properties
+                add("FreezePlan", p, canon("p", pp["id"], pp["cost"], pp["lambda"], pp["size"], pp["hops"],
+                                           sorted(pacc.get(pp["id"], []))), f.properties["id"])
+            if o:
+                op = o.properties
+                add("FreezeOrder", o, canon("o", op["id"], op["approver"], op["reason"], op["plan_hash"], op["data_version"],
+                                            op["verification"], op["created_at"], sorted(oacc.get(op["id"], []))), p.properties["id"])
+            if d:
+                dp = d.properties
+                add("Dispatch", d, canon("d", dp["id"], dp["plan_hash"], dp["channel"]), o.properties["id"])
+        return out
 
     def tool_resume_case(self, case_id: str) -> dict:
         case = self._case(case_id)
@@ -831,15 +881,19 @@ class Toolbox:
             {"plan": plan_id, "accounts": info["frozen"], "data_version": dv, "verification": ver[0]}, sort_keys=True).encode()).hexdigest()
         order_id = f"fo-{uuid.uuid4().hex[:8]}"
         now = int(time.time())
+        p_hash = self.g.ro_query("MATCH (p:FreezePlan {id: $p}) RETURN p.hash", params={"p": plan_id}).result_set[0][0] or ""
+        o_hash = chain_hash(canon("o", order_id, approver, reason, plan_hash, dv, ver[0], now, info["frozen"]), p_hash)
         self._write(
             "MATCH (p:FreezePlan {id: $p}) CREATE (o:FreezeOrder {id: $o, approver: $who, reason: $why, plan_hash: $h, "
-            "data_version: $dv, verification: $vf, created_at: $now, status: 'recorded'}) CREATE (p)-[:ORDERED_AS]->(o)",
-            {"p": plan_id, "o": order_id, "who": approver, "why": reason, "h": plan_hash, "dv": dv, "vf": ver[0], "now": now})
+            "data_version: $dv, verification: $vf, created_at: $now, status: 'recorded', hash: $oh, parent_hash: $ph}) "
+            "CREATE (p)-[:ORDERED_AS]->(o)",
+            {"p": plan_id, "o": order_id, "who": approver, "why": reason, "h": plan_hash, "dv": dv, "vf": ver[0], "now": now,
+             "oh": o_hash, "ph": p_hash})
         self._write("MATCH (o:FreezeOrder {id: $o}) UNWIND $fz AS acct MATCH (a:Account {id: acct}) CREATE (o)-[:FOR_ACCOUNT]->(a)",
                     {"o": order_id, "fz": info["frozen"]})
         out = {"order_id": order_id, "plan_id": plan_id, "approver": approver, "reason": reason, "accounts": info["frozen"],
                "plan_hash": plan_hash, "data_version": dv, "verification_finding_id": ver[0], "recorded_at": now,
-               "case_id": info["case_id"], "status": "recorded"}
+               "case_id": info["case_id"], "status": "recorded", "chain_hash": o_hash}
         out["dispatch"] = self._dispatch(out, case, info["finding_id"], ver[2])
         d = out["dispatch"]
         out["statement"] = (f"Freeze order recorded in the graph; holds placed on {d['holds_placed']} account(s); freeze request "
@@ -864,7 +918,7 @@ class Toolbox:
         o = o.properties
         return {"order_id": order_id, "plan_id": pid, "approver": o["approver"], "reason": o["reason"], "accounts": sorted(accts),
                 "plan_hash": o["plan_hash"], "data_version": int(o["data_version"]), "verification_finding_id": o["verification"],
-                "recorded_at": int(o["created_at"]), "status": o["status"]}
+                "recorded_at": int(o["created_at"]), "status": o["status"], "chain_hash": o.get("hash", "")}
 
     def retry_dispatch(self, order_id: str) -> dict:
         """Send a queued freeze request again (HTTP only, like the approval). Idempotent: one issue per plan hash."""

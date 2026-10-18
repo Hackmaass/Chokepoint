@@ -551,6 +551,30 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
       setOrderError('Could not reach the server.')
     }
   }
+  const [chain, setChain] = useState<string>('')
+  // Recompute every record's hash in the browser from the exact text the server hashed (sha256(canon + "|" + parent_hash)).
+  async function verifyChain() {
+    if (!caseId) return
+    setChain('Checking…')
+    try {
+      const { records } = await fetch(`/api/cases/${caseId}/chain`).then((r) => r.json())
+      const enc = new TextEncoder()
+      const sha = async (t: string) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(t)))).map((b) => b.toString(16).padStart(2, '0')).join('')
+      const stored: Record<string, string> = {}
+      let checked = 0
+      let unchained = 0
+      for (const r of records as any[]) {
+        if (!r.hash) { unchained++; continue }
+        const parentOk = r.parent_id === null ? r.parent_hash === '' : stored[r.parent_id] === r.parent_hash
+        if (!parentOk || (await sha(`${r.canon}|${r.parent_hash}`)) !== r.hash) { setChain(`✕ Broken at ${r.type} ${r.id}. ${checked} earlier records were intact.`); return }
+        stored[r.id] = r.hash
+        checked++
+      }
+      setChain(`✓ ${checked} receipt records re-hashed in this browser; every link matches.${unchained ? ` ${unchained} older records were written before chaining.` : ''}`)
+    } catch {
+      setChain('Could not fetch the receipt chain.')
+    }
+  }
   function orderText(o: any): string {
     const amt = plan?.chokepoint.traced_in_usd_cents ?? {}
     return [
@@ -1017,7 +1041,9 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
                     <p className="note">Every result is stored as a receipt: which run produced it, with what parameters, on which data version. Build a plan, then open its receipt.</p>
                   ) : (
                     <>
-                      <button className="btn small" onClick={loadReceipt}>Open receipt for this plan</button>
+                      <button className="btn small" onClick={loadReceipt}>Open receipt for this plan</button>{' '}
+                      <button className="btn small" onClick={verifyChain} disabled={!caseId}>Verify chain</button>
+                      {chain && <p className="note" role="status">{chain}</p>}
                       {receipt && (
                         <>
                           <table className="table-gap">
@@ -1049,18 +1075,20 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
           )}
         </aside>
       </main>
-      <details className="connect">
-        <summary>Connect your own agent over MCP</summary>
-        <p className="note">The same nine tools the built-in agent uses, over MCP streamable HTTP. There is no approve or dispatch tool: only a person approves, in this app. Synthetic data; calls share the tool rate limit.</p>
-        <p className="note">Claude Code:</p>
-        <pre className="mono">{`claude mcp add --transport http chokepoint ${window.location.origin}/mcp`}</pre>
-        <p className="note">Claude Desktop, Cursor and other clients (JSON config):</p>
-        <pre className="mono">{JSON.stringify({ mcpServers: { chokepoint: { url: `${window.location.origin}/mcp` } } }, null, 2)}</pre>
-        <p className="note">Then ask it to open a case for an example alert, build the freeze plan and verify it.</p>
-      </details>
       <footer className="footer">
         Synthetic data for demonstration. A freeze plan is a recommendation, not an instruction.
         <span className="footer-links">
+          <details className="connect">
+            <summary>Connect your agent (MCP)</summary>
+            <div className="connect-pop">
+              <p className="note">The same nine tools the built-in agent uses, over MCP streamable HTTP. There is no approve or dispatch tool: only a person approves, in this app. Synthetic data; calls share the tool rate limit.</p>
+              <p className="note">Claude Code:</p>
+              <pre className="mono">{`claude mcp add --transport http chokepoint ${window.location.origin}/mcp`}</pre>
+              <p className="note">Claude Desktop, Cursor and other clients (JSON config):</p>
+              <pre className="mono">{JSON.stringify({ mcpServers: { chokepoint: { url: `${window.location.origin}/mcp` } } }, null, 2)}</pre>
+              <p className="note">Then ask it to open a case for an example alert, build the freeze plan and verify it.</p>
+            </div>
+          </details>
           <a href="/docs" target="_blank" rel="noreferrer">API</a>
           <a href="https://github.com/Hackmaass/Chokepoint" target="_blank" rel="noreferrer">Source</a>
           <span className="build">Build {__BUILD__}</span>

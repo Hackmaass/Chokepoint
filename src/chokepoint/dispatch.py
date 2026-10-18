@@ -16,6 +16,8 @@ import time
 
 import httpx
 
+from .chain import canon, chain_hash
+
 log = logging.getLogger("chokepoint.dispatch")
 
 TIMEOUT_S = 8.0
@@ -71,7 +73,7 @@ def issue_payload(plan_id: str, plan_hash: str, order: dict, case: dict, plan: d
 </details>
 
 **Approved by:** {plain(order['approver'])}{(' · ' + plain(order['reason'])) if order['reason'] else ''}
-**Receipt:** case `{order['case_id']}` · plan `{plan_id}` · `plan_hash` `{plan_hash}` · data version {order['data_version']} · order `{order['order_id']}`
+**Receipt:** case `{order['case_id']}` · plan `{plan_id}` · `plan_hash` `{plan_hash}` · data version {order['data_version']} · order `{order['order_id']}` · receipt chain hash `{order.get('chain_hash') or 'n/a'}`
 
 *Synthetic data. Filed by Chokepoint's Dispatcher after approval by {plain(order['approver'])}. Not a real bank instruction.*
 """
@@ -143,8 +145,10 @@ def dispatch(tb, order_id: str, plan_id: str, plan_hash: str, order: dict, case:
                 note = f"GitHub unreachable or refused: {type(e).__name__}"
                 log.warning("dispatch for plan %s queued: %s", plan_id, note)
         tb._write("MERGE (d:Dispatch {id: $d}) SET d.channel = 'github-issue', d.plan_hash = $h, d.status = $s, d.url = $u, "
-                  "d.payload_hash = $ph, d.note = $n, d.sent_at = $now",
-                  {"d": dp_id, "h": plan_hash, "s": status, "u": url or "", "ph": phash, "n": note, "now": int(time.time())})
+                  "d.payload_hash = $ph, d.note = $n, d.sent_at = $now, d.hash = coalesce(d.hash, $dh), "
+                  "d.parent_hash = coalesce(d.parent_hash, $dph)",
+                  {"dh": chain_hash(canon("d", dp_id, plan_hash, "github-issue"), order.get("chain_hash", "")),
+                   "dph": order.get("chain_hash", ""), "d": dp_id, "h": plan_hash, "s": status, "u": url or "", "ph": phash, "n": note, "now": int(time.time())})
     tb._write("MATCH (o:FreezeOrder {id: $o}), (d:Dispatch {id: $d}) MERGE (o)-[:DISPATCHED_AS]->(d)", {"o": order_id, "d": dp_id})
     note = tb.g.ro_query("MATCH (d:Dispatch {id: $d}) RETURN d.note", params={"d": dp_id}).result_set[0][0] or ""
     return {"dispatch_id": dp_id, "channel": "github-issue", "status": status, "url": url or None, "payload_hash": phash,
