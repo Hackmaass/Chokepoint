@@ -20,8 +20,9 @@
   --tint-warning: rgba(184, 125, 0, 0.1);
   --tint-critical: rgba(208, 59, 59, 0.09);
   --focus-ring: #2a78d6;
-  --btn-primary-bg: #12110e;
-  --btn-primary-ink: #f2f1ea;
+  --control-border: #8a887f;
+  --btn-primary-bg: #c8431a;
+  --btn-primary-ink: #ffffff;
   --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 18px 40px -26px rgba(48, 42, 20, 0.34), 0 2px 6px -3px rgba(48, 42, 20, 0.12);
   --shadow-pop: 0 14px 32px -12px rgba(48, 42, 20, 0.4);
   --grid-dot: rgba(18, 17, 14, 0.13);
@@ -59,6 +60,7 @@
     --tint-warning: rgba(245, 184, 61, 0.12);
     --tint-critical: rgba(255, 107, 107, 0.12);
     --focus-ring: #7aa9ff;
+    --control-border: #6d6d76;
     --btn-primary-bg: #ff6b3d;
     --btn-primary-ink: #1a0a04;
     --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 24px 48px -28px rgba(0, 0, 0, 0.9);
@@ -88,6 +90,7 @@
   --tint-warning: rgba(245, 184, 61, 0.12);
   --tint-critical: rgba(255, 107, 107, 0.12);
   --focus-ring: #7aa9ff;
+  --control-border: #6d6d76;
   --btn-primary-bg: #ff6b3d;
   --btn-primary-ink: #1a0a04;
   --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 24px 48px -28px rgba(0, 0, 0, 0.9);
@@ -248,7 +251,7 @@ p { text-wrap: pretty; }
   border: 1px solid var(--line-baseline); font: 500 11px/16px var(--font-mono); letter-spacing: 0.02em; color: var(--ink-secondary); white-space: nowrap;
   background: var(--surface-1);
 }
-.badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--status-warning); }
+.badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--ink-muted); }
 .row { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
 .row > .field { flex: 1 1 160px; }
 .row > .field.ts { flex: 0 1 190px; }
@@ -274,7 +277,7 @@ p { text-wrap: pretty; }
 .chip.warn .ico { color: var(--surface-1); background: var(--status-warning); }
 .chip.bad { background: var(--tint-critical); border-color: color-mix(in srgb, var(--status-critical) 40%, transparent); }
 .chip.bad .ico { color: var(--surface-1); background: var(--status-critical); }
-.note { color: var(--ink-secondary); font-size: 12px; line-height: 18px; margin: 8px 0 0; }
+.note { color: var(--ink-secondary); font-size: 13px; line-height: 20px; margin: 8px 0 0; }
 .note.legend-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 .note .btn, .note label { vertical-align: middle; }
 .note label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
@@ -414,7 +417,7 @@ th.num { text-align: right; }
 .how-checked summary:hover { color: var(--ink-primary); }
 .how-checked[open] summary { margin-bottom: 4px; }
 .narrative .summary { margin: 0; }
-.narrative .summary.clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; line-clamp: 4; overflow: hidden; }
+.narrative .summary.clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5; line-clamp: 5; overflow: hidden; }
 .link-btn { margin: 6px 0 0; padding: 0; border: 0; background: none; font: inherit; font-size: 12px; line-height: 18px; color: var(--ink-secondary); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .link-btn:hover { color: var(--ink-primary); }
 @media (min-width: 900px) and (max-height: 820px) { .hero { font-size: 48px; } .hero small { margin-top: 6px; } }
@@ -460,3 +463,13 @@ th.num { text-align: right; }
 
 :root[data-theme='dark'] { --tour-dim: rgba(0, 0, 0, 0.7); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme='light']) { --tour-dim: rgba(0, 0, 0, 0.7); } }
+
+/* Edges of inputs and selects need 3:1 against the surface (WCAG 1.4.11); labelled buttons keep the hairline */
+.input { border-color: var(--control-border); }
+.input:hover { border-color: var(--ink-secondary); }
+/* Touch: small text controls get a 44px hit area without changing how they look */
+@media (pointer: coarse) {
+  .link-btn, .lp-link, .how-checked summary, .lp-foot a, .footer a { min-height: 44px; display: inline-flex; align-items: center; }
+  .seg button { min-height: 44px; }
+  .btn.small { min-height: 40px; }
+}

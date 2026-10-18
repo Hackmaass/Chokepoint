@@ -129,6 +129,8 @@ async function open(viewport, intercept) {
   await page.goto(BASE + '/#/app')
   await page.waitForSelector('.tour-card.welcome', { timeout: 15000 })
   check(true, 'tour: the welcome card is offered on a first visit')
+  for (let n = 0; n < 4; n++) await page.keyboard.press('Tab')
+  check(await page.evaluate(() => !!document.activeElement?.closest('.welcome')), 'tour: Tab stays inside the welcome card')
   await page.getByRole('button', { name: 'Start the tour' }).click()
   for (let n = 0; n < 7; n++) {
     await page.waitForFunction(() => !document.querySelector('.tour-card .btn.primary')?.disabled, null, { timeout: 30000 })

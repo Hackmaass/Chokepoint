@@ -139,7 +139,18 @@ export function TourWelcome({ onStart, onSkip }: { onStart: () => void; onSkip: 
   const go = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     go.current?.focus()
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onSkip()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onSkip()
+      else if (e.key === 'Tab') {
+        // keep focus on the card's two buttons while it is open
+        const items = [...document.querySelectorAll<HTMLElement>('.welcome button')]
+        const first = items[0]
+        const lastEl = items[items.length - 1]
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); lastEl.focus() }
+        else if (!e.shiftKey && document.activeElement === lastEl) { e.preventDefault(); first.focus() }
+        else if (!items.includes(document.activeElement as HTMLElement)) { e.preventDefault(); first.focus() }
+      }
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onSkip])

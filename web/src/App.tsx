@@ -571,7 +571,7 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
             {movable !== undefined ? (
               <>
                 <h1 className="hero" data-tour="hero">
-                  {usd(movable)}
+                  {usd(movable)}{' '}
                   <small>can move along these routes · route capacity from past transfers, not a forecast</small>
                 </h1>
                 {plan?.time_ordered && plan.time_ordered.money_movable_usd_cents !== movable && (
@@ -674,7 +674,7 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
               ids[next]?.click()
             }}>
               {(['steps', 'compare', 'receipt', ...(plan ? ['audit'] : []), ...(refresh ? ['changes'] : [])] as Tab[]).map((t) => (
-                <button key={t} id={`tab-${t}`} role="tab" aria-selected={tab === t} aria-controls="tabpanel" tabIndex={tab === t ? 0 : -1} onClick={() => setTab(t)}>
+                <button key={t} id={`tab-${t}`} role="tab" aria-selected={tab === t} aria-controls="tabpanel" tabIndex={tab === t ? 0 : -1} onClick={() => { setTab(t); window.requestAnimationFrame(() => document.getElementById('tabpanel')?.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })) }}>
                   {t === 'steps' ? 'Steps' : t === 'compare' ? 'Compare' : t === 'receipt' ? 'Receipt' : t === 'audit' ? 'Audit' : 'Changes'}
                 </button>
               ))}

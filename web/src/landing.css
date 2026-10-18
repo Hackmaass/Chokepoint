@@ -32,7 +32,7 @@
 .fig .n.exit { fill: var(--data-exit); stroke: none; }
 .fig .frozen circle { fill: var(--data-frozen); stroke: var(--surface-1); stroke-width: 2; }
 .fig .frozen path { fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; }
-.fig .frozen { transform-box: fill-box; transform-origin: center; opacity: 0.35; }
+.fig .frozen { transform-box: fill-box; transform-origin: center; opacity: 0.5; }
 .fig .frozen.on { opacity: 1; animation: lp-pop 520ms var(--ease) both; }
 .fig figcaption { padding: 16px 20px 18px; border-top: 1px solid var(--line-hairline); background: var(--surface-1); }
 .fig-state { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; align-items: baseline; min-height: 56px; }
@@ -43,7 +43,7 @@
 
 .sec { padding: 96px 0; border-top: 1px solid var(--line-hairline); scroll-margin-top: 60px; }
 .sec h2 { margin: 0 0 40px; font-size: clamp(28px, 3.4vw, 44px); line-height: 1.08; font-weight: 600; letter-spacing: -0.035em; text-wrap: balance; max-width: 22ch; }
-.how { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 56px; align-items: start; }
+.lp-how { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 56px; align-items: start; }
 .rail { list-style: none; margin: 0; padding: 0; counter-reset: step; max-width: 560px; }
 .shot { position: sticky; top: 92px; margin: 0; }
 .shot img { display: block; width: 100%; height: auto; border: 1px solid var(--line-baseline); border-radius: 12px; box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.7); }
@@ -85,13 +85,14 @@
   .diff-a, .diff-b, .diff-c, .diff-d { grid-column: span 12; }
   .nums > div { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .sec { padding: 64px 0; }
-  .how { grid-template-columns: minmax(0, 1fr); gap: 40px; }
+  .lp-how { grid-template-columns: minmax(0, 1fr); gap: 40px; }
   .shot { position: static; }
 }
 @media (max-width: 600px) {
   .lp-nav nav { display: none; }
   .lp-nav { gap: 12px; justify-content: space-between; }
   .lp-hero-cta .btn { flex: 1 1 100%; }
+  .lede .more { display: none; }
   .fig-state { grid-template-columns: minmax(0, 1fr); }
   .fig-meta { flex-direction: column; gap: 6px; }
 }

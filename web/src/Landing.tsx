@@ -131,8 +131,8 @@ export default function Landing() {
           <div className="lp-hero-copy">
             <h1>Which accounts do you freeze to stop the money?</h1>
             <p className="lede">
-              Stolen money does not sit still. Chokepoint takes one alert on a mule account, finds every route the money could have taken through past transfers,
-              and picks the few accounts whose freeze cuts them all. It checks the plan on a copy of the graph and keeps a receipt.
+              Stolen money does not sit still. Chokepoint takes one alert on a mule account and picks the few accounts whose freeze cuts every route the money could have taken through past transfers.
+              <span className="more"> It checks the plan on a copy of the graph and keeps a receipt.</span>
             </p>
             <div className="lp-hero-cta">
               <button className="btn primary big" onClick={() => go('#/app')}>Open the demo</button>
@@ -145,7 +145,7 @@ export default function Landing() {
 
         <section id="how" className="sec">
           <h2>From an alert to a receipt</h2>
-          <div className="how">
+          <div className="lp-how">
             <ol className="rail">
               {STEPS.map((s) => (
                 <li key={s.t}>
