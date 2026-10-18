@@ -4,7 +4,7 @@
 
 Built for [Graph Hacks: Context for AI Agents](https://www.wemakedevs.org/hackathons/falkordb) (WeMakeDevs x FalkorDB, Oct 15-18 2026). **Track 1: Agents that act on connected data.** Solo entry.
 
-> Live demo: _to be added_ · Demo video: _to be added_ · Blog post: _to be added_
+> Live demo: **<https://chokepoint-uou2.onrender.com/>** (a free host: the first load after idle can take about a minute) · Demo video: _to be added_ · Blog post: _to be added_
 
 [![ci](https://github.com/Hackmaass/Chokepoint/actions/workflows/ci.yml/badge.svg)](https://github.com/Hackmaass/Chokepoint/actions/workflows/ci.yml) ![data](https://img.shields.io/badge/data-synthetic-informational) ![license](https://img.shields.io/badge/license-MIT-blue) ![FalkorDB](https://img.shields.io/badge/FalkorDB-v4.22.0-orange)
 
@@ -12,6 +12,7 @@ Built for [Graph Hacks: Context for AI Agents](https://www.wemakedevs.org/hackat
 
 ### For judges in a hurry
 
+- **Live:** <https://chokepoint-uou2.onrender.com/> (landing page; **Open the demo** for the app; the 8 example alerts replay saved runs and run the tools).
 - **60-second path:** [`docs/for-judges.md`](docs/for-judges.md): what is real, what is not, a removal test, and where each claim can be checked.
 - **Every measured number in one command**, no key and no model: `docker exec chokepoint-api python scripts/judge_check.py` (or `uv run python scripts/judge_check.py`). Measured lines can fail; the held-out figures are printed as RECORDED, never as PASS.
 - **Run it in two minutes, no dataset download:** `docker build -f Dockerfile.hosted -t chokepoint-hosted . && docker run -p 7860:7860 chokepoint-hosted`, then open <http://localhost:7860/>. It holds a 4,453-transfer slice with the neighbourhoods of the 8 example alerts (about 100 MB of memory); any other account needs the full stack below.
