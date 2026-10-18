@@ -8,8 +8,9 @@ Built for [Graph Hacks: Context for AI Agents](https://www.wemakedevs.org/hackat
 
 ## Changes after the Oct 18 deadline (late-submission window)
 
-The on-time submission is the tag [`graphhacks-ontime-submission`](https://github.com/Hackmaass/Chokepoint/releases/tag/graphhacks-ontime-submission) (commit `42465d7`, Oct 18 2026, 22:51 IST). The live demo link above still serves the on-time build; the changes below are not deployed there. Everything below was added afterwards on the `late-window` branch and is listed here so nothing is hidden; `git log graphhacks-ontime-submission..late-window` shows the exact commits.
+The on-time submission is the tag [`graphhacks-ontime-submission`](https://github.com/Hackmaass/Chokepoint/releases/tag/graphhacks-ontime-submission) (commit `42465d7`, Oct 18 2026, 22:51 IST). Everything below was added afterwards on the `late-window` branch and is listed here so nothing is hidden; `git log graphhacks-ontime-submission..late-window` shows the exact commits.
 
+- **Organizers' answer:** the author confirmed with the organizers that on-time entrants may update their submission, so this branch was merged to `main` and the live demo redeployed from it. The tag above is still the exact on-time version.
 - **Dispatcher** (`src/chokepoint/dispatch.py`): after a named person approves a verified plan, holds are placed on the frozen accounts in the graph and one freeze request is filed as a GitHub issue in a public ops repo (synthetic data, no bank is called). One issue per plan hash; if GitHub is unreachable or no token is set the dispatch stays `queued` and the UI says so. An order can be withdrawn by a named person, which lifts the holds. It is not a tool, not in MCP, and the model cannot reach it (tests assert this).
 - **Live agent by default when the server has a model key** (`NVIDIA_API_KEY`): the visitor can type their own question about an example alert. If the model is rate-limited or down, the run says "Live model unavailable right now, showing a recorded run" and plays the saved run for that alert (a custom question has no saved run and reports the failure). Tested with a mocked 429.
 - **Keep-warm ping** (`.github/workflows/keepwarm.yml`): inactive until merged to `main`, because GitHub runs scheduled workflows only from the default branch.
@@ -268,7 +269,9 @@ Built with an AI coding assistant, Claude Code (Anthropic). The assistant wrote 
 
 The agent inside the product is separate: it runs a free NVIDIA Nemotron model, and the numbers on its cards come from deterministic tools, with its short summary checked against them.
 
-**Timeline:** all code, data pipeline, tooling, interface, deployment and evaluation work in this repository was done during the event, from Oct 15 00:01 IST.
+**Timeline:** all code, data pipeline, tooling, interface, deployment and evaluation work in this repository up to the on-time submission (tag `graphhacks-ontime-submission`) was done during the event, from Oct 15 00:01 IST. The changes after the deadline are listed in "Changes after the Oct 18 deadline" at the top; the author confirmed with the organizers that on-time entrants may update their submission.
+
+**Advisor review:** Claude Code's advisor tool (a stronger reviewer model that reads the session) was consulted at the start and before finishing the late-window work, as it was during the event. For the late window it flagged, and the assistant then fixed: visitor-typed text going unescaped into a public GitHub issue (now code spans only, tested); live-by-default changing what the browser tests exercise (they stay on replay); the README, deploy docs and `render.yaml` missing the new settings; and a dedupe path that stored a hash of bytes it never sent. It also advised against pushing or redeploying before the author's go-ahead. The advisor gives advice only; it does not run code, and the author remains responsible for the result.
 
 ### What the author did
 
