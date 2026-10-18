@@ -1,7 +1,5 @@
 # Which mule accounts do you freeze? A verified cut on FalkorDB, and a bug I found on the way
 
-*Draft for the Graph Hacks blog prize. Numbers marked TODO are filled in from the final runs.*
-
 Scam money does not sit still. In the first minutes after it lands in a mule account it is spread across other accounts, and by the time an alert reaches an investigator the question is no longer "is this account bad" but "where can the money still go, and which few accounts do we freeze to stop it, without locking out everyone else". That is a question about how accounts connect, which is why I built **Chokepoint** on FalkorDB for Graph Hacks.
 
 This post is about what worked, what did not, and one thing I found in FalkorDB along the way. I'll start with the part I expected to be the headline and wasn't.
@@ -44,6 +42,13 @@ On the eight example alerts: in **three** there is no time-ordered route to the 
 - **Make tool output deterministic.** I wanted saved agent runs the demo can replay when the free model is slow. They kept missing because tool results were the same facts in a different key order, or carried a flag that depended on what had run before. Ids derived from inputs, canonical JSON, and a test that replays every example fixed it.
 - **Servers have operational edges.** `GRAPH.COPY` needs a fork and fails while a background save runs; I turned snapshots off (the append-only file already persists the data), retry, and fall back to building the second graph.
 - **The model should choose and explain; code should compute.** The LLM never writes Cypher, the numbers on the cards come only from tools, and its short summary is checked against the tool results (in 120 evaluated runs one narrative mis-transcribed a figure; the interface now flags that). A second agent, the auditor, reads only what the first one stored in the graph and records a verdict that code refuses to let it contradict.
+
+## Check every number yourself
+
+One command re-measures the figures in this post, with no key and no model: `docker exec chokepoint-api python scripts/judge_check.py`
+(or `uv run python scripts/judge_check.py`). It verifies all eight example plans on a copy of the graph, the default alert's figures,
+the timing check, the 11-edge repro and the certificate on random and on real networks, and exits non-zero if a measured claim
+fails. The held-out figures are printed as recorded, never as PASS, because they need the full dataset and the original protocol.
 
 ## Try it
 
