@@ -95,6 +95,12 @@ and the original protocol (`docs/pilot-results.md`).
 | Rigour of the numbers | `docs/pilot-protocol.md` (written before the held-out run), `docs/pilot-results.md`, `docs/guarantee-and-latency.md` |
 | A FalkorDB finding | `docs/falkordb-maxflow-findings.md`: `algo.maxFlow` returns a non-maximal flow on 12 to 17% of random node-split networks (two batches); results are accepted only with a certificate, otherwise an exact solver runs |
 
+## What the public demo does not show
+
+The hosted build runs with `DEMO_MODE=0` because its state is shared between visitors, so it does not offer "Simulate late transfers" and
+you will not see the refusal of a stale approval there. Both are shown in the demo video and covered by `tests/test_ripple.py` and
+`tests/test_order.py`. On a free host the first load after idle can take about a minute while the service wakes up.
+
 ## What we claim, and what we do not
 
 - **Claim:** at equal budget the plan blocks about as much escaped laundering as the best simple rule of thumb (difference
