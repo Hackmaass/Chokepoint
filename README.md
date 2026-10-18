@@ -249,7 +249,17 @@ Built with an AI coding assistant, Claude Code (Anthropic). The assistant wrote 
 
 The agent inside the product is separate: it runs a free NVIDIA Nemotron model, and the numbers on its cards come from deterministic tools, with its short summary checked against them.
 
-**Before the event opened (Oct 14):** research and planning notes (ideas, a graph model sketch, evaluation design, checklists) with no application code, and a short look at FalkorDB's documentation examples in a throwaway container. All code, data pipeline, tooling, interface, deployment and evaluation work in this repository was done after the event opened on Oct 15, 00:01 IST.
+**Timeline:** all code, data pipeline, tooling, interface, deployment and evaluation work in this repository was done during the event, from Oct 15 00:01 IST.
+
+### What the author did
+
+This is a solo entry. The author:
+
+- **Chose the problem and kept the scope to one question**: which few accounts do you freeze to stop the money. Set the constraints: one person, a free model for the agent, public synthetic data only, application work only during the event.
+- **Set the standard for claims.** The held-out result is reported as a tie because that is what the evidence says; the qualifiers ("in the recorded transfers", "synthetic", "a recommendation, not an instruction") are deliberate, and the use of an AI assistant is disclosed here and in [`docs/ai-work-log.md`](docs/ai-work-log.md) rather than hidden.
+- **Directed the build through the event**: decided what went in and what stayed out. Product decisions the author made include the dark interface direction, the landing page and one-minute tour, a human approval step that the model cannot call, the small public build, and not inventing bank data, balances or devices that the dataset does not have.
+- **Studied the other submissions** and had the strongest ideas adapted, which is where the second check on the source graph, the checks listed before an approval, the gentler plans and the one-command claims check came from.
+- **Is responsible for the submission**: the repository, the deployment, the narrated demo, the write-up and the bug report for FalkorDB.
 
 ## Licence
 
