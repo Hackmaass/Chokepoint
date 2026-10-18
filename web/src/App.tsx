@@ -20,7 +20,7 @@ const TOUR: TourStep[] = [
 
 function loadTheme(): string {
   try {
-    return localStorage.getItem('theme') || 'dark'
+    return localStorage.getItem('chokepoint.theme') || 'dark'
   } catch {
     return 'dark'
   }
@@ -176,7 +176,7 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
     if (theme === 'system') root.removeAttribute('data-theme')
     else root.setAttribute('data-theme', theme)
     try {
-      localStorage.setItem('theme', theme)
+      localStorage.setItem('chokepoint.theme', theme)
     } catch {
       /* storage can be blocked */
     }

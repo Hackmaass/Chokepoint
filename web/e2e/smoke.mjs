@@ -171,6 +171,13 @@ async function open(viewport, intercept) {
   await p2.goto(BASE + '/', { waitUntil: 'networkidle' })
   check((await p2.evaluate(() => document.documentElement.getAttribute('data-theme'))) === 'dark', 'landing: dark by default even when the system is light')
   await light.close()
+  // an older visit saved the theme as "system" under the old key: it must not keep that visitor on the light look
+  const old = await browser.newContext({ viewport: { width: 1280, height: 800 }, colorScheme: 'light' })
+  await old.addInitScript(() => localStorage.setItem('theme', 'system'))
+  const p3 = await old.newPage()
+  await p3.goto(BASE + '/#/app', { waitUntil: 'networkidle' })
+  check((await p3.evaluate(() => document.documentElement.getAttribute('data-theme'))) === 'dark', 'landing: a theme saved by an older visit does not hold back the new look')
+  await old.close()
 }
 
 // 11. Result column: the deliverable and the tab bar fit a laptop screen; the "after the freeze" figure appears only once verified.

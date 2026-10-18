@@ -6,7 +6,7 @@ import Landing from './Landing'
 
 // The landing page needs the theme too, and App only sets it once it mounts: dark unless the visitor chose otherwise.
 try {
-  const t = localStorage.getItem('theme') || 'dark'
+  const t = localStorage.getItem('chokepoint.theme') || 'dark'
   if (t !== 'system') document.documentElement.setAttribute('data-theme', t)
 } catch {
   document.documentElement.setAttribute('data-theme', 'dark')
