@@ -249,6 +249,18 @@ async function open(viewport, intercept) {
   await ctx.close()
 }
 
+// 12b. Public MCP: the app shows how to connect an outside agent, and the endpoint answers.
+{
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } })
+  const page = await ctx.newPage()
+  await page.goto(BASE + '/#/app', { waitUntil: 'networkidle' })
+  await page.locator('details.connect > summary').click()
+  check((await page.locator('details.connect pre').first().innerText()).includes('/mcp'), 'mcp: the connect panel shows the Claude Code command')
+  const code = await page.evaluate(() => fetch('/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }) }).then((r) => r.status))
+  check(code === 200, 'mcp: the endpoint answers over HTTP')
+  await ctx.close()
+}
+
 // 13. Gentler plans: the default alert offers other plans, each is checked before it can be approved, and switching updates the card.
 {
   const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } })

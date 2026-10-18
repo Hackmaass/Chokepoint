@@ -47,6 +47,7 @@ from .agent import AUDITOR_PROMPT, AUDITOR_SPECS, answer_card, run_agent
 from .config import PROJECT_ROOT, get_settings, load_env
 from .db import connect
 from .llm import REPLAY_DIR, LLMClient
+from .mcp_server import mcp
 from .toolbox import Toolbox, ToolError
 
 load_env()
@@ -80,7 +81,9 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' 
 DOC_PATHS = ("/docs", "/redoc", "/openapi.json")  # Swagger UI loads its assets from a CDN, so no CSP there
 _RID = re.compile(r"[A-Za-z0-9_.-]{1,64}")
 
-app = FastAPI(title="Chokepoint", version="0.1.0")
+# The same nine tools the built-in agent uses, over MCP streamable HTTP at /mcp (no order, no dispatch: tests assert the list).
+mcp_app = mcp.http_app(path="/mcp", stateless_http=True)
+app = FastAPI(title="Chokepoint", version="0.1.0", lifespan=mcp_app.lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["GET", "POST", "DELETE"], allow_headers=["*"])
 
 _state: dict = {"db": None, "tb": None, "probe": None}
@@ -208,6 +211,11 @@ async def request_context(request: Request, call_next):
     rid = request.headers.get("x-request-id", "")
     request.state.request_id = rid if _RID.fullmatch(rid) else uuid.uuid4().hex[:12]
     t0 = time.perf_counter()
+    if request.url.path.startswith("/mcp") and request.method == "POST":
+        try:
+            tool_limit(request)  # public MCP calls share the tool rate limit
+        except HTTPException as e:
+            return error_response(e.status_code, "RATE_LIMITED", str(e.detail), headers=e.headers, request=request)
     try:
         response = await call_next(request)
     except Exception:
@@ -478,6 +486,7 @@ async def run_events(run_id: str, request: Request):
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+app.router.routes.extend(mcp_app.routes)  # before the static mount below, which would otherwise answer /mcp
 mimetypes.add_type("image/webp", ".webp")  # some Python builds lack it, and the landing page serves a .webp
 # Serve the built web app (npm run build) from the same process, after every API route is registered.
 _DIST = PROJECT_ROOT / "web" / "dist"

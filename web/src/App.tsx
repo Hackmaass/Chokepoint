@@ -1049,6 +1049,15 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
           )}
         </aside>
       </main>
+      <details className="connect">
+        <summary>Connect your own agent over MCP</summary>
+        <p className="note">The same nine tools the built-in agent uses, over MCP streamable HTTP. There is no approve or dispatch tool: only a person approves, in this app. Synthetic data; calls share the tool rate limit.</p>
+        <p className="note">Claude Code:</p>
+        <pre className="mono">{`claude mcp add --transport http chokepoint ${window.location.origin}/mcp`}</pre>
+        <p className="note">Claude Desktop, Cursor and other clients (JSON config):</p>
+        <pre className="mono">{JSON.stringify({ mcpServers: { chokepoint: { url: `${window.location.origin}/mcp` } } }, null, 2)}</pre>
+        <p className="note">Then ask it to open a case for an example alert, build the freeze plan and verify it.</p>
+      </details>
       <footer className="footer">
         Synthetic data for demonstration. A freeze plan is a recommendation, not an instruction.
         <span className="footer-links">
