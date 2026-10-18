@@ -128,7 +128,7 @@ class Toolbox:
         except TypeError as e:
             return ToolError("BAD_ARGUMENT", str(e)).as_dict()
         except UnknownAccount as e:
-            return ToolError("UNKNOWN_ACCOUNT", f"account {e} not found").as_dict()
+            return ToolError("UNKNOWN_ACCOUNT", f"account {e} not found", "pick one of the example alerts; a small public demo holds only their neighbourhoods (the full dataset is in docs/deploy.md)").as_dict()
         except CaseTooLarge as e:
             return ToolError(
                 "CASE_TOO_LARGE", str(e),

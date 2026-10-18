@@ -1,0 +1,6 @@
+HI-Small_slice.csv is a 4,453-row extract of IBM's "HI-Small" synthetic anti-money-laundering transactions
+(Altman et al., "Realistic Synthetic Financial Transactions for Anti-Money Laundering Models", NeurIPS 2023 Datasets and
+Benchmarks, arXiv:2306.16424; Kaggle dataset ealtman2019/ibm-transactions-for-anti-money-laundering-aml).
+The data is synthetic. The original is licensed CDLA-Sharing-1.0 (https://cdla.dev/sharing-1-0/); this extract is
+shared under the same licence. It holds the rows that touch accounts in the regions of the 8 example alerts
+(scripts/make_slice.py). The rest of this repository is MIT (see LICENSE).
