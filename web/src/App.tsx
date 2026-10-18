@@ -526,6 +526,25 @@ export default function App() {
                       <span className="chip warn"><span className="ico" aria-hidden>!</span> Not verified yet</span>
                     )}
                     {verifiedLine && <p className="note">{verifiedLine.method}</p>}
+                    {plan.chokepoint.accounts.length > 0 && (
+                      <ul className="acct-list" aria-label="Accounts to freeze">
+                        {plan.chokepoint.accounts.map((a) => (
+                          <li key={a}>
+                            <span className="mono">{a}</span>
+                            <span className="acct-hop">{view?.nodes.find((n) => n.id === a)?.depth ?? '?'} hop{view?.nodes.find((n) => n.id === a)?.depth === 1 ? '' : 's'} out</span>
+                            {plan.chokepoint.traced_in_usd_cents && <span className="acct-amt" title="Most this account received from the alerted account's downstream network in the window">{usd2(plan.chokepoint.traced_in_usd_cents[a] ?? 0)} in</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {plan.time_ordered && (
+                      <p className="note timing-line">
+                        <strong>Timing check:</strong>{' '}
+                        {plan.time_ordered.has_time_ordered_route
+                          ? `${plan.time_ordered.time_ordered_pairs} of ${plan.time_ordered.transfer_pairs} links can carry money in time order; the freeze needs ${plan.time_ordered.count} account${plan.time_ordered.count === 1 ? '' : 's'}${plan.time_ordered.count === plan.chokepoint.count ? ', the same as above' : ` (${plan.chokepoint.count} above)`}.`
+                          : 'none of the routes works in time order here, so the recorded timing would not have let this money leave. Details in Compare.'}
+                      </p>
+                    )}
                     {!plan.actionable && (
                       <div className="banner" role="note"><span className="ico" aria-hidden>!</span><span>This cut needs {plan.chokepoint.count} accounts, more than a team can act on. Try a smaller perimeter or a shorter window.</span></div>
                     )}
