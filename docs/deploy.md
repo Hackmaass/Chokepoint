@@ -37,6 +37,22 @@ curl -s localhost:8080/api/health                    # liveness: {"ok":true,...}
 curl -s localhost:8080/api/ready                     # readiness: {"ready":true,...}; 503 while the graph loads
 ```
 
+## Small public host (no dataset, about 100 MB of memory)
+
+`Dockerfile.hosted` is one container: FalkorDB, a 4,453-transfer slice of the dataset (`examples/slice`, every transfer that
+touches an account in the 8 example alerts' regions), the API and the UI. `scripts/make_slice.py` builds the slice; all 8
+example plans (accounts, residual money, baseline activity, traced-in amounts) were checked to be identical to the full
+dataset, and Replay reaches Verified for all 8 inside the container (idle memory 98 MB, tested with a 512 MB limit).
+Custom alerts on accounts outside the slice answer "unknown account"; the full stack above handles any account.
+
+```bash
+docker build -f Dockerfile.hosted -t chokepoint-hosted . && docker run -p 7860:7860 chokepoint-hosted
+```
+
+It works as a Docker Space on Hugging Face (port 7860), or on Render, Fly or Railway (it reads `PORT`). The graph lives in
+memory and is rebuilt from the slice in under a second on every start, so a host that sleeps and wakes loses nothing.
+`DEMO_MODE=0` is the default here. Set `NVIDIA_API_KEY` on the host only if you want the live agent.
+
 ## Terminal walkthrough (no browser, no key)
 
 With the stack up and `/api/ready` true, print one alert end to end (open case, money that could move, plan, check on a

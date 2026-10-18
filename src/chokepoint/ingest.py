@@ -92,8 +92,8 @@ def load_eval(db, df: pl.DataFrame, name: str) -> int:
     return len(rows)
 
 
-def load_all(db, name: str = "ibm", limit: int | None = None, batch_size: int = 5000):
-    df = load_transactions()
+def load_all(db, name: str = "ibm", limit: int | None = None, batch_size: int = 5000, csv: str | None = None):
+    df = load_transactions(csv) if csv else load_transactions()
     full = df
     if limit:
         df = df.head(limit)

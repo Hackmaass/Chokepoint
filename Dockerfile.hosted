@@ -1,0 +1,32 @@
+# Single-container build for a small public host (Hugging Face Spaces, Render, Fly, Railway): FalkorDB, the 8-alert
+# example slice (examples/slice, 4,453 transfers), the API and the UI. No dataset download, no volume, no secrets
+# needed. Replay and Tools-only work out of the box; set NVIDIA_API_KEY to enable the live agent.
+#   docker build -f Dockerfile.hosted -t chokepoint-hosted .  &&  docker run -p 7860:7860 chokepoint-hosted
+FROM node:22-alpine AS web
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+RUN npm run build
+
+FROM falkordb/falkordb:v4.22.0@sha256:4ac83f55062d364dcf151692635138b0bd2e12578019a56eb86ef53d067b116b AS db
+
+FROM python:3.12-slim
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 libsystemd0 libcap2 \
+    && rm -rf /var/lib/apt/lists/* && pip install --no-cache-dir uv==0.12.13
+COPY --from=db /usr/local/bin/redis-server /usr/local/bin/redis-cli /usr/local/bin/
+COPY --from=db /var/lib/falkordb/bin/falkordb.so /opt/falkordb/falkordb.so
+WORKDIR /app
+COPY pyproject.toml uv.lock README.md ./
+COPY src ./src
+RUN uv sync --frozen --no-dev
+COPY examples ./examples
+COPY replays ./replays
+COPY scripts ./scripts
+COPY deploy/hosted-entrypoint.sh ./hosted-entrypoint.sh
+COPY --from=web /web/dist ./web/dist
+ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 DEMO_MODE=0 TRUST_PROXY=1
+RUN useradd --system --uid 1000 --create-home app && mkdir -p /app/llm_cache /app/data && chown app /app/llm_cache /app/data && chmod +x hosted-entrypoint.sh
+USER app
+EXPOSE 7860
+CMD ["./hosted-entrypoint.sh"]

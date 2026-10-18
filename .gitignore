@@ -33,3 +33,6 @@ Thumbs.db
 
 # internal working log (not part of the public repo)
 STATUS.md
+
+# the small example slice is committed on purpose (see scripts/make_slice.py)
+!examples/slice/*.csv
