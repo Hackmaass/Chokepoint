@@ -13,6 +13,14 @@ function loadTheme(): string {
   }
 }
 
+function Icon({ kind }: { kind: 'check' | 'cross' }) {
+  return (
+    <svg viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      {kind === 'check' ? <path d="M2.5 6.4l2.4 2.4 4.6-5" /> : <path d="M3 3l6 6M9 3l-6 6" />}
+    </svg>
+  )
+}
+
 function fmtSummary(s: Record<string, any>): string {
   if (!s) return ''
   if ('accounts' in s && Array.isArray(s.accounts)) return `${s.accounts.length} account${s.accounts.length === 1 ? '' : 's'} · ${usd(s.movable_before_usd_cents ?? 0)} movable`
@@ -367,7 +375,7 @@ export default function App() {
             <path d="M18.5 8.5l5 9" stroke="var(--data-frozen)" />
           </svg>
           Chokepoint
-          <span className="brand-sub">freeze plans, verified</span>
+          <span className="brand-sub">mule-money investigation</span>
         </span>
         <div className="field">
           <label className="sr-only" htmlFor="recent">Saved cases</label>
@@ -497,7 +505,6 @@ export default function App() {
           <div className="panel" aria-live="polite">
             {movable !== undefined ? (
               <>
-                <p className="eyebrow">Money at risk</p>
                 <h1 className="hero">
                   {usd(movable)}
                   <small>can move along these routes · route capacity from past transfers, not a forecast</small>
@@ -510,7 +517,7 @@ export default function App() {
                     </div>
                     {verifiedLine ? (
                       <span className={`chip ${verifiedLine.verified ? 'good' : 'bad'}`}>
-                        <span className="ico" aria-hidden>{verifiedLine.verified ? '✓' : '✕'}</span>
+                        <span className="ico" aria-hidden><Icon kind={verifiedLine.verified ? 'check' : 'cross'} /></span>
                         {verifiedLine.verified ? `Verified: no route left to the ${plan.perimeter_hops}-hop perimeter` : 'Not verified: routes remain'}
                       </span>
                     ) : running ? (
@@ -527,7 +534,6 @@ export default function App() {
               </>
             ) : running ? (
               <div aria-busy="true">
-                <p className="eyebrow">Money at risk</p>
                 <span className="skeleton hero-sk" />
                 <span className="skeleton line-sk" />
                 <span className="skeleton chip-sk" />
@@ -568,14 +574,22 @@ export default function App() {
           </div>
 
           <div className="panel">
-            <div className="tabs" role="tablist">
+            <div className="tabs" role="tablist" aria-label="Case details" onKeyDown={(e) => {
+              if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft' && e.key !== 'Home' && e.key !== 'End') return
+              const ids = [...e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+              const at = ids.findIndex((b) => b === document.activeElement)
+              const next = e.key === 'Home' ? 0 : e.key === 'End' ? ids.length - 1 : (at + (e.key === 'ArrowRight' ? 1 : -1) + ids.length) % ids.length
+              e.preventDefault()
+              ids[next]?.focus()
+              ids[next]?.click()
+            }}>
               {(['steps', 'compare', 'receipt', ...(plan ? ['audit'] : []), ...(refresh ? ['changes'] : [])] as Tab[]).map((t) => (
-                <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
+                <button key={t} id={`tab-${t}`} role="tab" aria-selected={tab === t} aria-controls="tabpanel" tabIndex={tab === t ? 0 : -1} onClick={() => setTab(t)}>
                   {t === 'steps' ? 'Steps' : t === 'compare' ? 'Compare' : t === 'receipt' ? 'Receipt' : t === 'audit' ? 'Audit' : 'Changes'}
                 </button>
               ))}
             </div>
-            <div className="tabpanel">
+            <div className="tabpanel" id="tabpanel" role="tabpanel" aria-labelledby={`tab-${tab}`}>
               {tab === 'steps' && (
                 <div aria-live="polite">
                   {steps.length === 0 && <p className="note">Steps appear here as the agent works. Each one is a tool run stored in the graph.</p>}
@@ -585,7 +599,7 @@ export default function App() {
                       {s.thought && <div className="decision"><strong>Agent note:</strong> {s.thought}</div>}
                       <details className="step">
                         <summary>
-                          <span className={`mark ${s.ms === undefined ? 'run' : s.ok ? 'ok' : 'fail'}`} aria-hidden>{s.ms === undefined ? '' : s.ok ? '✓' : '✕'}</span>
+                          <span className={`mark ${s.ms === undefined ? 'run' : s.ok ? 'ok' : 'fail'}`} aria-hidden>{s.ms === undefined ? null : <Icon kind={s.ok ? 'check' : 'cross'} />}</span>
                           <span className="name">{STEP_NAMES[s.tool] ?? s.tool}{s.cached ? ' (saved)' : ''}</span>
                           <span className="ms">{s.ms === undefined ? 'running' : `${(s.ms / 1000).toFixed(1)} s`}</span>
                         </summary>
@@ -615,6 +629,21 @@ export default function App() {
                         </tbody>
                       </table>
                       <p className="note">The rule of thumb freezes the accounts the alerted account paid most recently. Held-out evaluation on 124 synthetic case-times: the two block about the same share of the money that had already escaped; Chokepoint's frozen accounts were more often part of the laundering (+19 points of precision) and its plan is checked on a copy of the graph to leave no route in the recorded transfers.</p>
+                      {plan.time_ordered && (
+                        <div className="note" role="note">
+                          <strong>Timing check.</strong> Money cannot go back in time, so a transfer that happens before the money reaches its sender is not a route.{' '}
+                          {plan.time_ordered.has_time_ordered_route ? (
+                            <>
+                              {plan.time_ordered.time_ordered_pairs} of {plan.time_ordered.transfer_pairs} transfer links can be part of a time-ordered route. A plan for those alone needs {plan.time_ordered.count} account{plan.time_ordered.count === 1 ? '' : 's'} (the plan above: {plan.chokepoint.count}); up to {usd2(plan.time_ordered.money_movable_usd_cents)} could have moved in order, {usd2(plan.time_ordered.residual_movable_usd_cents)} after the freeze{plan.time_ordered.routes_left ? '' : ', with no time-ordered route left'}. Checked in code on the recorded transfers, not on the graph copy.
+                              {plan.time_ordered.count > 0 && <> Accounts: <span className="mono">{plan.time_ordered.accounts.join(', ')}</span>.</>}
+                            </>
+                          ) : (
+                            <>
+                              Of {plan.time_ordered.transfer_pairs} transfer links, {plan.time_ordered.time_ordered_pairs} can be part of a time-ordered route, and none reaches the perimeter: in the recorded transfers the money could not have left by these routes in this order. The plan above ignores timing, so it is the cautious one.
+                            </>
+                          )}
+                        </div>
+                      )}
                       <table className="table-gap-lg">
                         <thead><tr><th>Chokepoint plan: accounts to freeze</th><th>Role</th>{plan.chokepoint.traced_in_usd_cents && <th className="num" title="Money this account received from the alerted account's downstream network in the window. An upper bound on what a hold must cover; the data has no balances.">Traced in (max)</th>}</tr></thead>
                         <tbody>

@@ -22,6 +22,17 @@ export type PlanSide = {
   rule?: string
 }
 
+export type TimeOrdered = {
+  transfer_pairs: number
+  time_ordered_pairs: number
+  has_time_ordered_route: boolean
+  accounts: string[]
+  count: number
+  routes_left: boolean
+  money_movable_usd_cents: number
+  residual_movable_usd_cents: number
+}
+
 export type Card = {
   case?: {
     case_id: string
@@ -44,6 +55,7 @@ export type Card = {
     before_usd_cents: number
     chokepoint: PlanSide
     rule_of_thumb: PlanSide
+    time_ordered?: TimeOrdered
   }
   verification?: {
     plan_id: string
@@ -248,6 +260,7 @@ export function buildCard(results: { tool: string; result: Record<string, any> }
         before_usd_cents: r.money_movable_before_usd_cents,
         chokepoint: r.chokepoint_plan,
         rule_of_thumb: r.rule_of_thumb_plan,
+        time_ordered: r.time_ordered,
       }
     if (tool === 'verify_plan')
       card.verification = {

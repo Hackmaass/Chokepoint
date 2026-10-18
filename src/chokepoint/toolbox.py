@@ -38,6 +38,8 @@ from .casegraph import (
     TruncatedResult,
     UnknownAccount,
     extract_region,
+    time_ordered_pairs,
+    transfer_times,
 )
 
 DAY = 1440
@@ -330,6 +332,27 @@ class Toolbox:
         rest = sorted((a for a in freezable if a not in last), key=lambda a: (-deg.get(a, 0), a))
         return (recent + rest)[:k]
 
+    def _time_ordered(self, region: Region, trans: dict, perimeter: set[str], costs: dict[str, int]) -> dict:
+        """The same question with transfer times respected: money cannot go back in time, so a link that only works
+        out of order is not a route. Card-only (kept out of the model's view, so saved agent runs stay valid) and
+        checked in code on the recorded transfers, not on the graph copy."""
+        times = transfer_times(self.g, region, trans)
+        keep = time_ordered_pairs(times, region.origin, region.t_from)
+        kept = {pair: v for pair, v in trans.items() if pair in keep}
+        reachable = bool(perimeter) and any(d in perimeter for (_, d) in keep)
+        out = {"transfer_pairs": len(trans), "time_ordered_pairs": len(keep), "has_time_ordered_route": reachable,
+               "accounts": [], "count": 0, "routes_left": False, "money_movable_usd_cents": 0, "residual_movable_usd_cents": 0}
+        if not reachable:
+            return out
+        net = build_split_network(costs, list(kept), region.origin, sorted(perimeter))
+        frozen = sorted(solve_freeze_plan(self.db, net, f"tplan_{uuid.uuid4().hex[:6]}").frozen)
+        left = time_ordered_pairs(times, region.origin, region.t_from, frozenset(frozen))
+        out.update(
+            accounts=frozen, count=len(frozen), routes_left=any(d in perimeter for (_, d) in left),
+            money_movable_usd_cents=int(self._money_flow(region, kept, perimeter, set(), "t_before")[0]),
+            residual_movable_usd_cents=int(self._money_flow(region, kept, perimeter, set(frozen), "t_after")[0]))
+        return out
+
     def tool_freeze_plan(self, case_id: str, lambda_weight: float = 0.0, perimeter_hops: int | None = None) -> dict:
         started = time.perf_counter()
         case = self._case(case_id)
@@ -386,8 +409,11 @@ class Toolbox:
                 "traced_in_usd_cents": {a: traced_in.get(a, 0) for a in accts},
             }
 
+        time_ordered = self._time_ordered(region, trans, perimeter, costs)
+
         result = {
             "case_id": case_id, "lambda_weight": lam, "perimeter_hops": hops,
+            "time_ordered": time_ordered,
             "money_movable_before_usd_cents": int(before),
             "chokepoint_plan": {**describe(frozen, after_cp), "cost": int(plan.cost), "solver": plan.solver},
             "rule_of_thumb_plan": {**describe(rule, after_rule),

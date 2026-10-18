@@ -22,6 +22,14 @@ RETURN a.id AS s, b.id AS d, t.cur AS cur, sum(t.amt) AS amt, count(t) AS n, max
 """
 
 
+# Q5: every transfer between region accounts in the window, with its time (for the time-order check).
+TRANSFER_TIMES_QUERY = """
+MATCH (a:Account)-[t:TRANSFER]->(b:Account)
+WHERE a.id IN $ids AND b.id IN $ids AND t.ts >= $t_from AND t.ts <= $t_to AND t.batch <= $data_version
+RETURN a.id AS s, b.id AS d, t.ts AS ts
+"""
+
+
 class CaseTooLarge(Exception):
     code = "CASE_TOO_LARGE"
 
@@ -100,3 +108,30 @@ def extract_region(
         if len(region.depth) > max_nodes:
             raise CaseTooLarge(f"{len(region.depth)} accounts after {hop + 1} hops (cap {max_nodes})")
     return region
+
+
+def transfer_times(graph, region: Region, pairs) -> list[tuple[str, str, int]]:
+    """(from, to, time) of every transfer in the region whose (from, to) is one of ``pairs``, oldest first."""
+    rows = graph.ro_query(
+        TRANSFER_TIMES_QUERY, timeout=QUERY_TIMEOUT_MS,
+        params={"ids": list(region.depth), "t_from": region.t_from, "t_to": region.t_to,
+                "data_version": region.data_version}).result_set
+    if len(rows) >= RESULT_CAP:
+        raise TruncatedResult(f"transfer times returned {len(rows)} rows (cap {RESULT_CAP})")
+    return sorted(((s, d, int(ts)) for s, d, ts in rows if (s, d) in pairs), key=lambda x: x[2])
+
+
+def time_ordered_pairs(transfers: list[tuple[str, str, int]], origin: str, t_from: int,
+                       removed: frozenset[str] = frozenset()) -> set[tuple[str, str]]:
+    """(from, to) pairs that lie on a route whose transfers happen in non-decreasing time, starting at ``origin`` any time
+    from ``t_from``. ``transfers`` must be sorted by time. Hop count is ignored (a superset of the hop-limited routes),
+    so a cut of these pairs also cuts every real route. Accounts in ``removed`` take no part."""
+    arrived = {origin: t_from}  # earliest time money could be at the account
+    changed = True
+    while changed:  # repeat so same-minute chains settle
+        changed = False
+        for s, d, ts in transfers:
+            if s in arrived and ts >= arrived[s] and s not in removed and d not in removed and ts < arrived.get(d, ts + 1):
+                arrived[d] = ts
+                changed = True
+    return {(s, d) for s, d, ts in transfers if s in arrived and ts >= arrived[s] and s not in removed and d not in removed}

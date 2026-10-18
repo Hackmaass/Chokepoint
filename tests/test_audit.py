@@ -12,7 +12,7 @@ from chokepoint.db import connect
 from chokepoint.toolbox import Toolbox
 
 pytestmark = pytest.mark.db
-EX = json.loads((PROJECT_ROOT / "examples" / "examples.json").read_text(encoding="utf-8"))[3]
+EX = next(e for e in json.loads((PROJECT_ROOT / "examples" / "examples.json").read_text(encoding="utf-8")) if e["account"] == "021174:800737690")
 
 
 @pytest.fixture(scope="module")

@@ -30,7 +30,7 @@ function styles(): StylesheetJson {
     { selector: 'edge', style: { width: 1, 'line-color': hair, 'target-arrow-color': hair, 'target-arrow-shape': 'triangle', 'arrow-scale': 0.7, 'curve-style': 'bezier', opacity: 0.8, 'transition-property': 'opacity, width, line-color, target-arrow-color', 'transition-duration': 420 } },
     { selector: 'edge[flow > 0]', style: { 'line-color': flow, 'target-arrow-color': flow, width: 'data(w)', opacity: 1 } },
     { selector: 'edge.pre', style: { 'line-color': hair, 'target-arrow-color': hair, width: 1, opacity: 0.18 } },
-    { selector: 'edge.cut', style: { 'line-color': hair, 'target-arrow-color': hair, width: 1, opacity: 0.5 } },
+    { selector: 'edge.cut', style: { 'line-color': muted, 'target-arrow-color': muted, width: 1.25, opacity: 0.6, 'line-style': 'dashed' } },
   ] as unknown as StylesheetJson
 }
 
@@ -137,11 +137,11 @@ export default function Graph({ view, showRule, verified, theme }: Props) {
       edges.addClass('cut')
       return
     }
-    const hair = css('--line-baseline')
+    const muted = css('--ink-muted')
     let inner: ReturnType<typeof setTimeout> | undefined
     const outer = setTimeout(() => {
       edges.forEach((e) => {
-        e.animate({ style: { 'line-color': hair, 'target-arrow-color': hair, width: 1, opacity: 0.5 } }, { duration: 700, easing: 'ease-out' })
+        e.animate({ style: { 'line-color': muted, 'target-arrow-color': muted, width: 1.25, opacity: 0.6 } }, { duration: 700, easing: 'ease-out' })
       })
       inner = setTimeout(() => edges.addClass('cut'), 760)
     }, Math.max(1400, revealMs.current + 500))

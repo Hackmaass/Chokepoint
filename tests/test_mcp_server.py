@@ -25,7 +25,7 @@ def test_tools_are_listed_and_work_through_mcp():
 
     if "tenant_ibm" not in connect().list_graphs():
         pytest.skip("tenant_ibm not loaded")
-    example = json.loads((PROJECT_ROOT / "examples" / "examples.json").read_text(encoding="utf-8"))[3]
+    example = next(e for e in json.loads((PROJECT_ROOT / "examples" / "examples.json").read_text(encoding="utf-8")) if e["account"] == "021174:800737690")
 
     async def go():
         async with Client(mcp) as c:

@@ -1,5 +1,15 @@
 [
   {
+    "account": "021174:800737690",
+    "alert_ts": "2022-09-10T10:17",
+    "split": "dev",
+    "frac": 0.7,
+    "accounts_in_region": 21,
+    "plan_accounts": 3,
+    "movable_usd_cents": 2241020,
+    "rule_leaves_usd_cents": 1933259
+  },
+  {
     "account": "024515:80EBB2100",
     "alert_ts": "2022-09-04T11:36",
     "split": "test",
@@ -28,16 +38,6 @@
     "plan_accounts": 3,
     "movable_usd_cents": 3693329,
     "rule_leaves_usd_cents": 3277988
-  },
-  {
-    "account": "021174:800737690",
-    "alert_ts": "2022-09-10T10:17",
-    "split": "dev",
-    "frac": 0.7,
-    "accounts_in_region": 21,
-    "plan_accounts": 3,
-    "movable_usd_cents": 2241020,
-    "rule_leaves_usd_cents": 1933259
   },
   {
     "account": "0135403:80E2226E0",
