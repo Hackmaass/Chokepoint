@@ -70,7 +70,7 @@ On 40 random networks the script reports 22 accepted, 6 rejected and 12 where Fa
 
 ## Checking the plan on a copy
 
-Every plan gets a second look. I rebuild the region at the stored data version in a scratch graph, `GRAPH.COPY` it, delete the frozen accounts from the copy, and ask `shortestPath` for a route to every perimeter account again:
+Every plan is checked before it is recommended. I rebuild the region at the stored data version in a scratch graph, `GRAPH.COPY` it, delete the frozen accounts from the copy, and ask `shortestPath` for a route to every perimeter account again:
 
 ```cypher
 MATCH (s:A {id: $o}) MATCH (t:A) WHERE t.id IN $perim
