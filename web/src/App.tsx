@@ -75,6 +75,28 @@ function Countdown({ from, to }: { from: number; to: number }) {
   return <>{usd(v)}</>
 }
 
+/** The fixed Cypher behind each tool, fetched when opened. The agent never writes a query; these are the ones the tools run. */
+function QueriesPanel() {
+  const [qs, setQs] = useState<{ tool: string; name: string; purpose: string; cypher: string }[] | null>(null)
+  const [failed, setFailed] = useState(false)
+  return (
+    <details className="how-checked queries" onToggle={(e) => {
+      if ((e.currentTarget as HTMLDetailsElement).open && !qs) {
+        fetch('/api/queries').then((r) => r.json()).then((d) => setQs(d.queries)).catch(() => setFailed(true))
+      }
+    }}>
+      <summary>The fixed queries behind these tools</summary>
+      {failed && <p className="note">Could not load the queries.</p>}
+      {qs?.map((q) => (
+        <div key={q.name} className="query">
+          <p className="note"><strong>{q.name}</strong> · {STEP_NAMES[q.tool] ?? q.tool}. {q.purpose}</p>
+          <pre className="mono">{q.cypher}</pre>
+        </div>
+      ))}
+    </details>
+  )
+}
+
 export default function App({ autoTour = false }: { autoTour?: boolean }) {
   const [examples, setExamples] = useState<Example[]>([])
   const [recent, setRecent] = useState<CaseRow[]>([])
@@ -845,6 +867,7 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
                           <button className="btn small mt-8" onClick={() => navigator.clipboard?.writeText(JSON.stringify(receipt, null, 2))}>Copy receipt</button>
                         </>
                       )}
+                      <QueriesPanel />
                     </>
                   )}
                 </div>

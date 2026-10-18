@@ -305,6 +305,14 @@ def cases(limit: int = 20) -> list[dict]:
     return toolbox().list_cases(min(max(limit, 1), 50))
 
 
+@app.get("/api/queries")
+def queries() -> dict:
+    """The fixed Cypher behind each tool (static text; no database call)."""
+    from .queries import QUERIES
+
+    return {"queries": QUERIES}
+
+
 @app.get("/api/cases/{case_id}")
 def resume(case_id: str) -> dict:
     result = toolbox().call("resume_case", {"case_id": case_id})

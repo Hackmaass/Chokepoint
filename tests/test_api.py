@@ -57,3 +57,9 @@ def test_ready_and_unknown_case_use_http_errors(client):
     # tool endpoints keep their contract: a failed tool is a 200 whose body is the typed error
     tool = client.post("/api/tools/resume_case", json={"case_id": "c-doesnotexist"})
     assert tool.status_code == 200 and tool.json()["error"]["code"] == "UNKNOWN_CASE"
+
+
+def test_fixed_queries_are_published_for_the_receipt_tab(client):
+    qs = client.get("/api/queries").json()["queries"]
+    assert len(qs) >= 5 and all(q["cypher"] and q["tool"] and q["purpose"] for q in qs)
+    assert any("algo.maxFlow" in q["cypher"] for q in qs) and any("shortestPath" in q["cypher"] for q in qs)

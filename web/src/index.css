@@ -492,3 +492,6 @@ th.num { text-align: right; }
 @media (max-width: 899px) { .legend-float { display: none; } }
 @media (min-width: 900px) { .legend-below { display: none; } }
 .build { margin-left: 14px; color: var(--ink-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.queries { margin-top: 14px; }
+.query { margin-top: 10px; }
+.query pre { margin: 6px 0 0; padding: 10px 12px; max-height: 220px; overflow: auto; white-space: pre; border-radius: 8px; background: var(--surface-2); color: var(--ink-secondary); font-size: 12px; line-height: 18px; }
