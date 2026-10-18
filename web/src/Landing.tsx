@@ -179,7 +179,7 @@ export default function Landing() {
               </p>
             </article>
             <article className="diff-c">
-              <h3>It respects time order</h3>
+              <h3>It checks time order</h3>
               <p>
                 Money cannot go back in time. A timing check keeps only routes whose transfers happen in order. On the 8 example alerts, 3 have no time-ordered route at all and 2 need fewer accounts.
               </p>

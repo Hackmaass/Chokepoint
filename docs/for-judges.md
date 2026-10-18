@@ -7,7 +7,7 @@ stop it?** It then checks its own plan and keeps a receipt. Everything below use
 
 On a first visit the app offers a one-minute guided tour (the **Tour** button reopens it): it plays the saved example and points at the money at risk, the accounts to freeze, the check on a copy, the timing check and the Compare, Receipt and Audit tabs.
 
-1. Open the live app (it holds the neighbourhoods of the 8 example alerts, built from `Dockerfile.hosted`; any other account
+1. Open the live app (the root address is a short landing page; **Open the demo** or `#/app` goes to the app. It holds the neighbourhoods of the 8 example alerts, built from `Dockerfile.hosted`; any other account
    needs the full stack, [`deploy.md`](deploy.md)), or run it locally: follow steps 2 and 3 of [`deploy.md`](deploy.md) (copy `.env.example` to `.env`, start
    `falkordb`, run the `seed` job, then start the `app` profile). The seed step downloads the dataset (checksum verified) and
    loads it, which takes a few minutes; wait until `http://127.0.0.1:8080/api/ready` says `"ready":true`. **Replay** is the default

@@ -422,9 +422,9 @@ th.num { text-align: right; }
 /* Guided tour: a dashed cut line around what is being explained (the same mark as a cut edge on the map) */
 .tour { position: fixed; inset: 0; z-index: 1000; }
 .tour-block { position: fixed; inset: 0; }
-.tour-dim { position: fixed; inset: 0; background: rgba(18, 17, 14, 0.52); animation: tour-fade 240ms var(--ease) both; }
+.tour-dim { position: fixed; inset: 0; background: var(--tour-dim, rgba(18, 17, 14, 0.52)); animation: tour-fade 240ms var(--ease) both; }
 .tour-spot {
-  position: fixed; border-radius: 14px; pointer-events: none; box-shadow: 0 0 0 100vmax rgba(18, 17, 14, 0.52);
+  position: fixed; border-radius: 14px; pointer-events: none; box-shadow: 0 0 0 100vmax var(--tour-dim, rgba(18, 17, 14, 0.52));
   outline: 2px dashed var(--data-frozen); outline-offset: 3px;
   transition: left 320ms var(--ease), top 320ms var(--ease), width 320ms var(--ease), height 320ms var(--ease);
 }
@@ -457,3 +457,6 @@ th.num { text-align: right; }
   .tour-dim, .tour-card { animation: none; }
   .tour-spot, .tour-progress span { transition: none; }
 }
+
+:root[data-theme='dark'] { --tour-dim: rgba(0, 0, 0, 0.7); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) { --tour-dim: rgba(0, 0, 0, 0.7); } }

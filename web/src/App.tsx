@@ -62,6 +62,7 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
   const [tour, setTour] = useState<'off' | 'welcome' | 'steps'>('off')
   const [pendingTourRun, setPendingTourRun] = useState(false)
   const tourButton = useRef<HTMLButtonElement>(null)
+  const autoTourUsed = useRef(false)
   const [alertTs, setAlertTs] = useState('')
   const [mode, setMode] = useState<Mode>('replay')
   const [server, setServer] = useState<Ready>({ ready: false, state: 'checking' })
@@ -102,7 +103,8 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
 
   // "Take the tour" on the landing page opens #/app/tour: start straight away and tidy the address.
   useEffect(() => {
-    if (autoTour && server.ready && examples.length > 0 && tour === 'off') {
+    if (autoTour && !autoTourUsed.current && server.ready && examples.length > 0 && tour === 'off') {
+      autoTourUsed.current = true
       window.history.replaceState(null, '', '#/app')
       startTour()
     }

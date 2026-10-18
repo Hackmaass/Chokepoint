@@ -22,6 +22,7 @@ import asyncio
 import functools
 import json
 import logging
+import mimetypes
 import os
 import re
 import threading
@@ -427,6 +428,7 @@ async def run_events(run_id: str, request: Request):
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+mimetypes.add_type("image/webp", ".webp")  # some Python builds lack it, and the landing page serves a .webp
 # Serve the built web app (npm run build) from the same process, after every API route is registered.
 _DIST = PROJECT_ROOT / "web" / "dist"
 if _DIST.exists():

@@ -161,6 +161,12 @@ async function open(viewport, intercept) {
   await page.waitForSelector('.tour-card', { timeout: 20000 })
   check((await page.locator('.tour-card.welcome').count()) === 0, 'landing: "Take the tour" skips the welcome card and starts the steps')
   await ctx.close()
+  // a visitor whose system is in light mode and who has never chosen a theme still gets the dark default
+  const light = await browser.newContext({ viewport: { width: 1280, height: 800 }, colorScheme: 'light' })
+  const p2 = await light.newPage()
+  await p2.goto(BASE + '/', { waitUntil: 'networkidle' })
+  check((await p2.evaluate(() => document.documentElement.getAttribute('data-theme'))) === 'dark', 'landing: dark by default even when the system is light')
+  await light.close()
 }
 
 // 8. Late data (demo mode only): banner, re-run only the affected findings, and a replay that no longer matches says
