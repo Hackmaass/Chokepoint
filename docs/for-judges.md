@@ -3,6 +3,20 @@
 Chokepoint answers one question after an alert: **where can the stolen money still go, and which few accounts do we freeze to
 stop it?** It then checks its own plan and keeps a receipt. Everything below uses synthetic data.
 
+## What is real, and what is not
+
+**Real:** IBM's synthetic anti-money-laundering transfers (5.08 million rows, of which 4.49 million transfers are loaded after
+self-transfers are dropped; the small public demo holds only the 8 example alerts' neighbourhoods); every figure on the cards (each
+is a stored tool run); the `GRAPH.COPY` check; the `algo.maxFlow` wrong-answer repro and its certificate; `scripts/judge_check.py`;
+and a flag on any figure in the model's text that no tool returned. The agent never writes Cypher: tools run fixed queries, reads go
+through `GRAPH.RO_QUERY` so the database refuses writes on that path (`tests/test_gates_db.py`), and the tools write only their own
+cases, findings, plans and receipts.
+
+**Not real:** there is no bank data, no account balances (so "Traced in" is an upper bound, not a partial freeze), and the public
+demo replays a saved agent run rather than answering new questions. The plan itself is not time-aware (only the card's timing
+check is). The held-out results are one synthetic dataset and carry no promise for real data. An AI coding assistant wrote most of
+the code ([`ai-work-log.md`](ai-work-log.md)).
+
 ## See it in 60 seconds (no key, no model calls)
 
 On a first visit the app offers a one-minute guided tour (the **Tour** button reopens it): it plays the saved example and points at the money at risk, the accounts to freeze, the check on a copy, the timing check and the Compare, Receipt and Audit tabs.
@@ -25,6 +39,20 @@ On a first visit the app offers a one-minute guided tour (the **Tour** button re
 No browser? Once the stack is ready, `docker exec chokepoint-api python scripts/demo.py` prints the same chain in the terminal in
 about 4 seconds. Want your own client? From a checkout, `uv run python -m chokepoint.mcp_server` serves the same tools over MCP
 (stdio, or token-protected HTTP with `--http`).
+
+## A removal test: the same case without the graph
+
+The no-graph arm is the rule of thumb an analyst would use without one: freeze the accounts the alerted account paid most recently,
+at the same number of accounts. On the held-out half it blocked about the same share of escaped laundering (difference -0.002,
+95% interval [-0.09, +0.08]) and was less precise (+0.19 for the cut, [+0.07, +0.32]). It could not tell when it was done: to leave no
+route it needed more accounts than the minimum cut in 64% of cases (median 3 against 1, `guarantee-and-latency.md`). So what the
+graph-backed plan adds is the guarantee, the precision and the receipt, not a larger blocked share. This shows the plan, not any
+particular database, carries those gains: another database could hold the same graph. What FalkorDB supplies here is the per-hop
+queries over 4.5 million transfers, the first-pass max-flow, the independent `GRAPH.COPY` check and a home for the receipts and case
+memory in the same graph.
+
+On the 8 real example networks FalkorDB's max-flow was right every time and every plan used it (`judge_check.py`), so on these
+cases the exact fallback was not needed; it is there for the 12 to 17% of random networks where the raw answer is wrong.
 
 ## Check every number in one command
 

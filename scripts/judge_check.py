@@ -136,6 +136,31 @@ line("FAIL" if false_accepts else "PASS", "MEASURED  the certificate never accep
 line("INFO", f"MEASURED  FalkorDB's raw answer differed from the exact value on {raw_wrong} of {ran} networks ({100 * raw_wrong / max(ran, 1):.0f}%)",
      "docs say 12 to 17% across two batches (14 of 120 here, 24 of about 140 earlier); small batches wander")
 
+# 5b. the same test on the real example networks (lambda 0: every freezable account costs 100)
+acc = rej = none = wrong_raw = 0
+for cid in case_ids:
+    region = tb._region(tb._case(cid))
+    perimeter, trans, freezable = tb._network_parts(region)
+    net = build_split_network({a: 100 for a in freezable}, list(trans), region.origin, sorted(perimeter))
+    exact = solve_networkx(net)
+    got = run_falkordb_maxflow(db, net, f"judge_check_ex_{cid[-6:]}")
+    if got is None:
+        none += 1
+        continue
+    wrong_raw += got.value != exact.value
+    ok = certify(net, got)
+    acc += ok
+    rej += not ok
+line("INFO", f"MEASURED  on the {len(case_ids)} real example networks FalkorDB's max-flow was accepted {acc}, rejected {rej}, gave no answer {none}; its raw value was wrong {wrong_raw} times",
+     "real networks, not random ones: shows how often the exact fallback is needed on these cases; no claim beyond these 8")
+
+solvers: dict[str, int] = {}
+for _, p, _ in rows:
+    k = p["chokepoint_plan"]["solver"]
+    solvers[k] = solvers.get(k, 0) + 1
+line("INFO", "MEASURED  solver recorded in the 8 example plans: " + ", ".join(f"{k} x{n}" for k, n in sorted(solvers.items())),
+     "consistent with the line above when every plan says falkordb")
+
 # 6. recorded, not re-run
 for label, detail in [
     ("RECORDED blocked share vs the rule of thumb: difference -0.002, 95% interval [-0.09, +0.08], held-out half",
