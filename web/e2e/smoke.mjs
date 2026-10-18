@@ -29,7 +29,7 @@ async function open(viewport, intercept) {
   page.on('pageerror', (e) => problems.push(e.message))
   page.on('console', (m) => m.type() === 'error' && problems.push(m.text()))
   if (intercept) await intercept(page)
-  await page.goto(BASE, { waitUntil: 'networkidle' })
+  await page.goto(BASE + '/#/app', { waitUntil: 'networkidle' })
   return { page, problems }
 }
 
@@ -126,7 +126,7 @@ async function open(viewport, intercept) {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
   await ctx.addInitScript(() => Object.defineProperty(navigator, 'webdriver', { get: () => false })) // look like a person
   const page = await ctx.newPage()
-  await page.goto(BASE)
+  await page.goto(BASE + '/#/app')
   await page.waitForSelector('.tour-card.welcome', { timeout: 15000 })
   check(true, 'tour: the welcome card is offered on a first visit')
   await page.getByRole('button', { name: 'Start the tour' }).click()
@@ -143,6 +143,23 @@ async function open(viewport, intercept) {
   check((await page.locator('.tour').count()) === 0, 'tour: it does not come back on the next visit')
   await page.getByRole('button', { name: 'Tour', exact: true }).click()
   check((await page.locator('.tour-card').count()) === 1, 'tour: the Tour button reopens it')
+  await ctx.close()
+}
+
+// 10. Landing page: it is the front door, its buttons reach the app and the tour, and it fits a phone.
+{
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } })
+  const page = await ctx.newPage()
+  await page.goto(BASE + '/', { waitUntil: 'networkidle' })
+  check(await page.getByRole('heading', { level: 1, name: /Which accounts do you freeze/ }).isVisible(), 'landing: the first page is the landing page')
+  check((await page.evaluate(() => document.documentElement.scrollWidth)) <= 390, 'landing: no horizontal scroll at 390 px')
+  await page.getByRole('button', { name: 'Open the demo' }).first().click()
+  await page.getByRole('button', { name: /Run the example alert/ }).waitFor({ timeout: 15000 })
+  check(true, 'landing: "Open the demo" reaches the app')
+  await page.goto(BASE + '/', { waitUntil: 'networkidle' })
+  await page.getByRole('button', { name: /Take the one-minute tour/ }).click()
+  await page.waitForSelector('.tour-card', { timeout: 20000 })
+  check((await page.locator('.tour-card.welcome').count()) === 0, 'landing: "Take the tour" skips the welcome card and starts the steps')
   await ctx.close()
 }
 

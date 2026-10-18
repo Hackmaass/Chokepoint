@@ -38,7 +38,7 @@ const t0 = Date.now()
 const until = async (sec) => page.waitForTimeout(Math.max(0, sec * 1000 - (Date.now() - t0)))
 const tail = (p, ms = 15000) => p.waitFor({ timeout: ms }).catch(() => undefined)
 
-await page.goto(BASE, { waitUntil: 'networkidle' })
+await page.goto(BASE + '/#/app', { waitUntil: 'networkidle' })
 await until(15) // 0:00 empty state
 
 const opts = await page.locator('#ex option').allInnerTexts()

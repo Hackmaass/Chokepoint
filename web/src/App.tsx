@@ -20,9 +20,9 @@ const TOUR: TourStep[] = [
 
 function loadTheme(): string {
   try {
-    return localStorage.getItem('theme') || 'system'
+    return localStorage.getItem('theme') || 'dark'
   } catch {
-    return 'system'
+    return 'dark'
   }
 }
 
@@ -54,7 +54,7 @@ function friendlyRunError(m: string): string {
   return m
 }
 
-export default function App() {
+export default function App({ autoTour = false }: { autoTour?: boolean }) {
   const [examples, setExamples] = useState<Example[]>([])
   const [recent, setRecent] = useState<CaseRow[]>([])
   const [account, setAccount] = useState('')
@@ -96,9 +96,17 @@ export default function App() {
   useEffect(() => {
     if (tour !== 'off' || !server.ready || examples.length === 0 || navigator.webdriver) return
     try { if (localStorage.getItem(TOUR_KEY)) return } catch { return }
-    const t = window.setTimeout(() => setTour('welcome'), 700)
+    const t = window.setTimeout(() => setTour((v) => (v === 'off' ? 'welcome' : v)), 700)
     return () => window.clearTimeout(t)
   }, [server.ready, examples.length, tour])
+
+  // "Take the tour" on the landing page opens #/app/tour: start straight away and tidy the address.
+  useEffect(() => {
+    if (autoTour && server.ready && examples.length > 0 && tour === 'off') {
+      window.history.replaceState(null, '', '#/app')
+      startTour()
+    }
+  }, [autoTour, server.ready, examples.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // The tour plays the first example in Replay: wait for the form to hold it, then run once.
   useEffect(() => {
@@ -419,7 +427,7 @@ export default function App() {
     <div className="app">
       <a className="skip-link" href="#main">Skip to the case</a>
       <header className="header">
-        <span className="brand">
+        <a className="brand" href="#/" aria-label="Chokepoint home">
           <svg className="brand-mark" viewBox="0 0 26 26" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
             <path d="M3 5l9 8M3 21l9-8M14 13h9" />
             <circle cx="13" cy="13" r="3" fill="currentColor" stroke="none" />
@@ -427,7 +435,7 @@ export default function App() {
           </svg>
           Chokepoint
           <span className="brand-sub">mule-money investigation</span>
-        </span>
+        </a>
         <div className="field">
           <label className="sr-only" htmlFor="recent">Saved cases</label>
           <select id="recent" className="input select-compact" value="" onChange={(e) => resume(e.target.value)}>
