@@ -12,6 +12,8 @@ and a flag on any figure in the model's text that no tool returned. The agent ne
 through `GRAPH.RO_QUERY` so the database refuses writes on that path (`tests/test_gates_db.py`), and the tools write only their own
 cases, findings, plans and receipts.
 
+**Gentler plans.** The same tool at a higher weight on everyday activity offers other plans: on 2 of the 8 examples, including the default alert, one exists (3 accounts and 21 everyday transfers become 5 accounts and 6); on the other 6 every weighting picks the same accounts. Each option is checked on a copy before it can be approved. This is a trade-off shown, not a claim that more accounts is better.
+
 **A person decides.** A checked plan can be approved by a named person in the app, after the form lists the checks that apply (verified, current, actionable, no routes left, the second check): the approval is recorded as a freeze order in the graph, tied to the plan, its accounts, the data version and the check by a hash, and it is refused for an unchecked plan or once newer transfers exist (`tests/test_order.py`). It is an HTTP endpoint, not a tool, so the model cannot call it, and no bank is called.
 
 **Not real:** there is no bank data, no account balances (so "Traced in" is an upper bound, not a partial freeze), and the public

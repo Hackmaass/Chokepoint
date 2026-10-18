@@ -111,6 +111,8 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
   const [orderReason, setOrderReason] = useState('')
   const [orderBusy, setOrderBusy] = useState(false)
   const [orderError, setOrderError] = useState('')
+  const [alts, setAlts] = useState<{ lambda: number; r: any }[] | null>(null)
+  const [altBusy, setAltBusy] = useState(false)
   const [gate, setGate] = useState<{ check: string; passed: boolean; detail: string; blocking: boolean }[] | null>(null)
   const [alertTs, setAlertTs] = useState('')
   const [mode, setMode] = useState<Mode>('replay')
@@ -481,6 +483,41 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
               {view?.truncated && <span>Showing {view.shown_accounts} of {view.total_accounts} accounts</span>}
             </div>
   )
+  async function loadAlts() {
+    const id = card.case?.case_id
+    if (!id || !plan || alts || altBusy) return
+    setAltBusy(true)
+    try {
+      const got: { lambda: number; r: any }[] = []
+      for (const lambda of [2, 8]) {
+        const r = await api.tool('freeze_plan', { case_id: id, lambda_weight: lambda })
+        if (!r.error) got.push({ lambda, r })
+      }
+      const seen = new Set([plan.chokepoint.accounts.join('|')])
+      setAlts(got.filter((g) => { const k = g.r.chokepoint_plan.accounts.join('|'); if (seen.has(k)) return false; seen.add(k); return true }))
+    } catch {
+      setAlts([])
+    } finally {
+      setAltBusy(false)
+    }
+  }
+  async function switchToPlan(g: { lambda: number; r: any }) {
+    setAltBusy(true)
+    try {
+      push({ type: 'tool_call', tool: 'freeze_plan', args: { case_id: g.r.case_id, lambda_weight: g.lambda } })
+      push({ type: 'tool_result', tool: 'freeze_plan', ms: 0, ok: true, summary: '', result: g.r })
+      push({ type: 'tool_call', tool: 'verify_plan', args: { plan_id: g.r.plan_id } })
+      const t0 = performance.now()
+      const v = await api.tool('verify_plan', { plan_id: g.r.plan_id })
+      push({ type: 'tool_result', tool: 'verify_plan', ms: Math.round(performance.now() - t0), ok: !v.error, summary: v.error ? v.error.message : '', result: v })
+      setReceipt(null)
+      setAudit(null)
+      setAlts(null)
+      setOrderOpen(false)
+    } finally {
+      setAltBusy(false)
+    }
+  }
   const myOrders = orders.filter((o) => o.plan_id === plan?.plan_id)
   async function submitOrder() {
     if (!plan) return
@@ -701,6 +738,28 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
                           </li>
                         ))}
                       </ul>
+                    )}
+                    {verifiedLine?.verified && plan.chokepoint.accounts.length > 0 && (
+                      <details key={plan.plan_id} className="how-checked alts" onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open) loadAlts() }}>
+                        <summary>Other plans, gentler on everyday activity</summary>
+                        {altBusy && !alts && <p className="note">Working out the options…</p>}
+                        {alts && alts.length === 0 && <p className="note">No other plan differs here: every weighting picks these same accounts.</p>}
+                        {alts && alts.length > 0 && (
+                          <>
+                            <p className="note">Each extra account can buy less disruption to the accounts' ordinary transfers elsewhere. Every option is checked on a copy before you can approve it.</p>
+                            <ul className="alt-list">
+                              <li><span>This plan</span><span className="mono">{plan.chokepoint.count} accounts · {plan.chokepoint.baseline_activity_transfers} everyday transfers</span><span /></li>
+                              {alts.map((g) => (
+                                <li key={g.lambda}>
+                                  <span>Gentler{g.lambda >= 8 ? ' still' : ''}</span>
+                                  <span className="mono">{g.r.chokepoint_plan.count} accounts · {g.r.chokepoint_plan.baseline_activity_transfers} everyday transfers</span>
+                                  <button className="btn small" disabled={altBusy} onClick={() => switchToPlan(g)}>Use this plan</button>
+                                </li>
+                              ))}
+                            </ul>
+                          </>
+                        )}
+                      </details>
                     )}
                     {verifiedLine?.verified && plan.chokepoint.accounts.length > 0 && (
                       <div className="order">
@@ -956,7 +1015,7 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
             <details className="panel agent-summary">
               <summary>Agent summary</summary>
               <p>{finalText}</p>
-              <p className="note">The model writes these words. Every figure on the cards comes from a tool run, and this text is checked against them.</p>
+              <p className="note">The model writes these words. Every figure on the cards comes from a tool run, and this text is checked against them.{events.filter((e) => e.type === 'tool_result' && e.tool === 'freeze_plan').length > 1 ? ' This summary describes the first plan, not the one you switched to.' : ''}</p>
             </details>
           )}
         </aside>

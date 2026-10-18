@@ -224,6 +224,24 @@ async function open(viewport, intercept) {
   await ctx.close()
 }
 
+// 13. Gentler plans: the default alert offers other plans, each is checked before it can be approved, and switching updates the card.
+{
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } })
+  const page = await ctx.newPage()
+  await page.goto(BASE + '/#/app', { waitUntil: 'networkidle' })
+  await page.getByRole('button', { name: /Run the example alert/ }).click()
+  await page.waitForSelector('.chip.good', { timeout: 30000 })
+  await page.getByText('Other plans, gentler on everyday activity').click()
+  await page.getByRole('button', { name: 'Use this plan' }).first().waitFor({ timeout: 30000 })
+  check(true, 'plans: gentler options are offered for the default alert')
+  const before = await page.locator('.acct-list li').count()
+  await page.getByRole('button', { name: 'Use this plan' }).first().click()
+  await page.waitForFunction((n) => document.querySelectorAll('.acct-list li').length !== n, before, { timeout: 30000 })
+  await page.waitForSelector('.chip.good', { timeout: 30000 })
+  check((await page.locator('.acct-list li').count()) > before, 'plans: switching shows the larger, gentler plan, checked on a copy')
+  await ctx.close()
+}
+
 // 8. Late data (demo mode only): banner, re-run only the affected findings, and a replay that no longer matches says
 //    why and offers a reset. The demo data is reset afterwards.
 {

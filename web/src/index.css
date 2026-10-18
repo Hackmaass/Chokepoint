@@ -505,3 +505,7 @@ th.num { text-align: right; }
 .gate li span { font-weight: 600; width: 14px; flex: none; }
 .gate li.ok span { color: var(--status-good); }
 .gate li.no span { color: var(--status-critical); }
+.alts { margin-top: 10px; }
+.alt-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.alt-list li { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 13px; line-height: 20px; color: var(--ink-secondary); }
+.alt-list .mono { color: var(--ink-primary); }

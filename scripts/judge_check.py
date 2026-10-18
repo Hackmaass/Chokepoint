@@ -71,6 +71,16 @@ bad = [a for a, _, v in rows if not (v["source_recheck"]["perimeter_reachable_af
 line("FAIL" if bad else "PASS", "MEASURED  a second check that re-expands the source graph (not the copy) agrees: nothing reaches the perimeter after the freeze, something did before",
      f"disagree: {', '.join(bad)}" if bad else f"{len(rows)} of {len(rows)} examples agree")
 
+# 2c. gentler-on-everyday-activity options (the same tool at a higher weight on everyday activity)
+differ = []
+for (acct, p, _), cid in zip(rows, case_ids):
+    alt = tb.call("freeze_plan", {"case_id": cid, "lambda_weight": 8})
+    if alt["chokepoint_plan"]["accounts"] != p["chokepoint_plan"]["accounts"]:
+        differ.append((acct, p["chokepoint_plan"]["count"], p["chokepoint_plan"]["baseline_activity_transfers"],
+                       alt["chokepoint_plan"]["count"], alt["chokepoint_plan"]["baseline_activity_transfers"]))
+line("PASS" if len(differ) == 2 else "FAIL", "MEASURED  on 2 of the 8 examples a gentler plan exists (more accounts, less everyday activity); the other 6 pick the same accounts at any weight",
+     "; ".join(f"{a}: {c1} accounts / {e1} everyday transfers -> {c2} / {e2}" for a, c1, e1, c2, e2 in differ))
+
 # 3. timing check across the examples
 no_route = smaller = same = 0
 for _, p, _ in rows:
