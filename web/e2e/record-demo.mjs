@@ -46,24 +46,32 @@ await page.selectOption('#ex', { index: opts.findIndex((t) => t.includes(ACCOUNT
 await page.waitForTimeout(800)
 await page.getByRole('button', { name: /^Investigate$/ }).click() // 0:15 steps appear
 await page.waitForSelector('.chip.good', { timeout: 30000 })
-await until(40)
+await until(35)
 
-await page.getByRole('button', { name: 'Play routes' }).click() // 0:40 routes appear hop by hop, then fade at the check
-await until(60)
+await page.getByRole('button', { name: 'Play routes' }).click() // 0:35 routes appear hop by hop, then fade at the check
+await until(52)
 
-await page.locator('.chip.good').hover() // 1:00 the verified chip and its method note
-await until(80)
+await page.locator('.chip.good').hover() // 0:52 the verified chip and its method note
+await until(68)
 
-await page.getByRole('tab', { name: 'Compare' }).click() // 1:20
-await until(110)
+await page.getByRole('tab', { name: 'Compare' }).click() // 1:08
+await until(95)
 
-await page.getByRole('tab', { name: 'Audit' }).click() // 1:50
+await page.getByRole('tab', { name: 'Audit' }).click() // 1:35
 await page.waitForTimeout(1500)
 await page.getByRole('button', { name: 'Ask the auditor' }).click()
 await tail(page.getByText(/Auditor verdict/))
-await until(130)
+await until(112)
 
-if (await page.getByRole('button', { name: 'Simulate late transfers' }).count()) { // 2:10
+// 1:52 a person approves the checked plan: the order is recorded and says no bank is called
+await page.getByRole('button', { name: /Approve a freeze order/ }).click()
+await page.getByLabel('Your name').fill('Asha Verma')
+await page.waitForTimeout(1500)
+await page.getByRole('button', { name: 'Record freeze order' }).click()
+await tail(page.getByText(/Freeze order fo-/), 10000)
+await until(132)
+
+if (await page.getByRole('button', { name: 'Simulate late transfers' }).count()) { // 2:12
   await page.getByRole('button', { name: 'Simulate late transfers' }).click()
   await tail(page.getByText(/Late transfers arrived/))
   await page.waitForTimeout(3000)
@@ -71,14 +79,14 @@ if (await page.getByRole('button', { name: 'Simulate late transfers' }).count())
   await tail(page.getByRole('tab', { name: 'Changes' }), 60000)
   await page.getByRole('tab', { name: 'Changes' }).click()
 }
-await until(155)
+await until(152)
 
-await page.getByRole('tab', { name: 'Receipt' }).click() // 2:35
+await page.getByRole('tab', { name: 'Receipt' }).click() // 2:32
 await page.waitForTimeout(1500)
 const open = page.getByRole('button', { name: 'Open receipt for this plan' })
 if (await open.count()) await open.click()
 await tail(page.getByText(/solver/), 10000)
-await until(170)
+await until(168)
 
 const video = page.video()
 await ctx.close()
