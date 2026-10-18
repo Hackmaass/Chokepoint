@@ -13,11 +13,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import sys
 import time
 from pathlib import Path
 
+import httpx
+
+from chokepoint import dispatch as _dispatch
 from chokepoint.algo.cut import build_split_network, certify, run_falkordb_maxflow, solve_networkx
 from chokepoint.db import connect
 from chokepoint.toolbox import Toolbox
@@ -197,6 +201,26 @@ tool_reply = tb.call("order_freeze", {"plan_id": first_plan, "approver": "judge 
 line("PASS" if ok_order and refused_unverified == "NOT_VERIFIED" and "error" in tool_reply else "FAIL",
      "MEASURED  a verified plan can be approved by a person; an unchecked plan is refused; the tool route does not know the approval",
      f"verified plan approved: {ok_order}; unchecked plan: {refused_unverified}; as a tool: {tool_reply.get('error', {}).get('code')}")
+
+# 5d. the Dispatcher files one freeze request per approved plan (GitHub mocked here: this run never contacts it)
+_posted: list[dict] = []
+
+
+def _fake_github(req):
+    if req.method == "GET":
+        return httpx.Response(200, json=[{"title": i["title"], "html_url": f"https://example.invalid/issues/{n}"} for n, i in enumerate(_posted, 1)])
+    _posted.append(json.loads(req.content))
+    return httpx.Response(201, json={"html_url": f"https://example.invalid/issues/{len(_posted)}"})
+
+
+_dispatch.transport = httpx.MockTransport(_fake_github)
+os.environ["OPS_GITHUB_TOKEN"] = "judge-check-mock"
+os.environ["OPS_GITHUB_API"] = "https://mock.invalid"
+d_orders = [tb.order_freeze(rows[0][1]["plan_id"], f"judge check {i}", "") for i in range(2)]
+sent = {o["dispatch"]["url"] for o in d_orders if o["dispatch"]["status"] == "sent"}
+line("PASS" if len(_posted) == 1 and len(sent) == 1 else "FAIL",
+     f"MEASURED  Dispatch: {len(d_orders)} orders, {len(sent)} request filed, {len(_posted) - len({i["title"] for i in _posted})} duplicates (GitHub mocked)",
+     "the same plan approved twice files one freeze request")
 
 # 6. recorded, not re-run
 for label, detail in [

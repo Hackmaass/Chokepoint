@@ -6,6 +6,12 @@ Built for [Graph Hacks: Context for AI Agents](https://www.wemakedevs.org/hackat
 
 > Live demo: **<https://chokepoint-uou2.onrender.com/>** (a free host: the first load after idle can take about a minute) · Demo video: **<https://youtu.be/St6muXDuDKo>** · Blog post: **<https://dev.to/omkar_rane_bfa9ae9e3651f0/which-mule-accounts-do-you-freeze-a-checked-minimum-cut-on-a-449-million-transfer-falkordb-graph-2afg>**
 
+## Changes after the Oct 18 deadline (late-submission window)
+
+The on-time submission is the tag [`graphhacks-ontime-submission`](https://github.com/Hackmaass/Chokepoint/releases/tag/graphhacks-ontime-submission) (commit `42465d7`, Oct 18 2026, 22:51 IST). Everything below was added afterwards on the `late-window` branch and is listed here so nothing is hidden; `git log graphhacks-ontime-submission..late-window` shows the exact commits.
+
+- **Dispatcher** (`src/chokepoint/dispatch.py`): after a named person approves a verified plan, holds are placed on the frozen accounts in the graph and one freeze request is filed as a GitHub issue in a public ops repo (synthetic data, no bank is called). One issue per plan hash; if GitHub is unreachable or no token is set the dispatch stays `queued` and the UI says so. An order can be withdrawn by a named person, which lifts the holds. It is not a tool, not in MCP, and the model cannot reach it (tests assert this).
+
 [![ci](https://github.com/Hackmaass/Chokepoint/actions/workflows/ci.yml/badge.svg)](https://github.com/Hackmaass/Chokepoint/actions/workflows/ci.yml) ![data](https://img.shields.io/badge/data-synthetic-informational) ![license](https://img.shields.io/badge/license-MIT-blue) ![FalkorDB](https://img.shields.io/badge/FalkorDB-v4.22.0-orange)
 
 ![Chokepoint: the decision card and the routes, on the default example alert](web/public/app-dark.webp)

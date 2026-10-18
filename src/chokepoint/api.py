@@ -77,7 +77,7 @@ DOC_PATHS = ("/docs", "/redoc", "/openapi.json")  # Swagger UI loads its assets 
 _RID = re.compile(r"[A-Za-z0-9_.-]{1,64}")
 
 app = FastAPI(title="Chokepoint", version="0.1.0")
-app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["GET", "POST"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["GET", "POST", "DELETE"], allow_headers=["*"])
 
 _state: dict = {"db": None, "tb": None, "probe": None}
 _state_lock = threading.Lock()
@@ -313,11 +313,27 @@ class OrderRequest(BaseModel):
 @app.post("/api/plans/{plan_id}/order", dependencies=[Depends(tool_limit)])
 def order_freeze(plan_id: str, req: OrderRequest) -> dict:
     """A person approves a verified plan. Not a tool and not in MCP: the model cannot call it."""
+    return _order_call(toolbox().order_freeze, plan_id, req.approver, req.reason)
+
+
+def _order_call(fn, *args) -> dict:
     try:
-        return toolbox().order_freeze(plan_id, req.approver, req.reason)
+        return fn(*args)
     except ToolError as e:
-        status = 404 if e.code.startswith("UNKNOWN") else 409 if e.code in ("STALE_EVIDENCE", "NOT_VERIFIED") else 400
+        status = 404 if e.code.startswith("UNKNOWN") else 409 if e.code in ("STALE_EVIDENCE", "NOT_VERIFIED", "ORDER_WITHDRAWN") else 400
         return error_response(status, e.code, e.message, e.hint)
+
+
+@app.post("/api/orders/{order_id}/dispatch", dependencies=[Depends(tool_limit)])
+def retry_dispatch(order_id: str) -> dict:
+    """Send a queued freeze request again. HTTP only, like the approval: not a tool and not in MCP."""
+    return _order_call(toolbox().retry_dispatch, order_id)
+
+
+@app.delete("/api/orders/{order_id}", dependencies=[Depends(tool_limit)])
+def withdraw_order(order_id: str, req: OrderRequest) -> dict:
+    """A named person withdraws an order: holds are lifted and the withdrawal is recorded."""
+    return _order_call(toolbox().withdraw_order, order_id, req.approver, req.reason)
 
 
 @app.get("/api/queries")

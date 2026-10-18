@@ -534,6 +534,19 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
       setOrderBusy(false)
     }
   }
+  async function orderAction(o: any, kind: 'retry' | 'withdraw') {
+    setOrderError('')
+    try {
+      const r = kind === 'retry'
+        ? await fetch(`/api/orders/${o.order_id}/dispatch`, { method: 'POST' })
+        : await fetch(`/api/orders/${o.order_id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approver: o.approver, reason: 'withdrawn from the case screen' }) })
+      const d = await r.json()
+      if (r.ok) setOrders((os) => os.map((x) => (x.order_id === o.order_id ? { ...x, ...d } : x)))
+      else setOrderError(d?.error?.message ?? 'The server refused.')
+    } catch {
+      setOrderError('Could not reach the server.')
+    }
+  }
   function orderText(o: any): string {
     const amt = plan?.chokepoint.traced_in_usd_cents ?? {}
     return [
@@ -765,8 +778,13 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
                       <div className="order">
                         {myOrders.map((o) => (
                           <p key={o.order_id} className="note order-done" role="status">
-                            <strong>Freeze order {o.order_id} recorded</strong> · approved by {o.approver} · bound to plan hash {o.plan_hash.slice(0, 12)} · data version {o.data_version}. No bank is called.{' '}
+                            <strong>Freeze order {o.order_id} {o.status === 'withdrawn' ? 'withdrawn' : 'recorded'}</strong> · approved by {o.approver} · bound to plan hash {o.plan_hash.slice(0, 12)} · data version {o.data_version}. No bank is called.{' '}
+                            {o.status !== 'withdrawn' && o.dispatch && (o.dispatch.status === 'sent'
+                              ? <><strong>Dispatched</strong>: <a href={o.dispatch.url} target="_blank" rel="noreferrer">freeze request filed</a> (synthetic), {o.dispatch.holds_placed} hold{o.dispatch.holds_placed === 1 ? '' : 's'} placed.{' '}</>
+                              : <><strong>Queued, not sent.</strong> {o.dispatch.holds_placed} hold{o.dispatch.holds_placed === 1 ? '' : 's'} placed, the freeze request has not been filed.{' '}
+                                <button className="link-btn" onClick={() => orderAction(o, 'retry')}>Retry dispatch</button>{' '}</>)}
                             <button className="link-btn" onClick={() => navigator.clipboard?.writeText(orderText(o))}>Copy freeze order</button>
+                            {o.status !== 'withdrawn' && <>{' '}<button className="link-btn" onClick={() => orderAction(o, 'withdraw')}>Withdraw</button></>}
                           </p>
                         ))}
                         {info?.has_newer_data ? (
@@ -790,7 +808,7 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
                               <button className="btn small primary" type="submit" disabled={orderBusy || approver.trim().length < 2}>{orderBusy ? 'Recording…' : 'Record freeze order'}</button>
                               <button className="btn small" type="button" onClick={() => setOrderOpen(false)}>Cancel</button>
                             </div>
-                            <p className="note">A person decides; the agent cannot approve. The order is tied to this checked plan and records your name. Nothing is sent to a bank.</p>
+                            <p className="note">A person decides; the agent cannot approve. The order is tied to this checked plan and records your name. After you record it, a freeze request is filed in a public ops repo (synthetic) and holds are placed in the graph. Nothing is sent to a bank.</p>
                             {orderError && <p className="error" role="alert">{orderError}</p>}
                           </form>
                         ) : (

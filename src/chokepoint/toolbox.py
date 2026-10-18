@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 import networkx as nx
 from redis.exceptions import ResponseError
 
+from . import dispatch as dispatcher
 from .algo.cut import (
     FlowNetwork,
     NoFiniteCut,
@@ -639,10 +640,13 @@ class Toolbox:
     def delete_case(self, case_id: str) -> None:
         """Remove a case with its findings, plans and receipts (used by scripts and cleanup)."""
         self._write(
+            "MATCH (:Case {id: $id})-[:HAS]->(:Finding)-[:HAS_PLAN]->(:FreezePlan)-[:ORDERED_AS]->(o:FreezeOrder)"
+            "-[:FOR_ACCOUNT]->(a:Account) REMOVE a.hold, a.hold_since", {"id": case_id})
+        self._write(
             "MATCH (c:Case {id: $id}) OPTIONAL MATCH (c)-[:HAS]->(f:Finding) "
             "OPTIONAL MATCH (f)-[:HAS_PLAN]->(p:FreezePlan) OPTIONAL MATCH (p)-[:ORDERED_AS]->(o:FreezeOrder) "
-            "OPTIONAL MATCH (tc:ToolCall)-[:RUN_IN]->(c) "
-            "DETACH DELETE o, p, f, tc, c", {"id": case_id})
+            "OPTIONAL MATCH (o)-[:DISPATCHED_AS]->(d:Dispatch) OPTIONAL MATCH (tc:ToolCall)-[:RUN_IN]->(c) "
+            "DETACH DELETE d, o, p, f, tc, c", {"id": case_id})
 
     # ------------------------------------------------------------------ late data: ripple
     AFFECTED_QUERY = (
@@ -814,18 +818,73 @@ class Toolbox:
             {"p": plan_id, "o": order_id, "who": approver, "why": reason, "h": plan_hash, "dv": dv, "vf": ver[0], "now": now})
         self._write("MATCH (o:FreezeOrder {id: $o}) UNWIND $fz AS acct MATCH (a:Account {id: acct}) CREATE (o)-[:FOR_ACCOUNT]->(a)",
                     {"o": order_id, "fz": info["frozen"]})
-        return {"order_id": order_id, "plan_id": plan_id, "approver": approver, "reason": reason, "accounts": info["frozen"],
-                "plan_hash": plan_hash, "data_version": dv, "verification_finding_id": ver[0], "recorded_at": now,
-                "statement": "Freeze order recorded in the graph. No bank is called; a person would send it on."}
+        out = {"order_id": order_id, "plan_id": plan_id, "approver": approver, "reason": reason, "accounts": info["frozen"],
+               "plan_hash": plan_hash, "data_version": dv, "verification_finding_id": ver[0], "recorded_at": now,
+               "case_id": info["case_id"], "status": "recorded"}
+        out["dispatch"] = self._dispatch(out, case, info["finding_id"], ver[2])
+        d = out["dispatch"]
+        out["statement"] = (f"Freeze order recorded in the graph; holds placed on {d['holds_placed']} account(s); freeze request "
+                            + ("filed in the ops repo" if d["status"] == "sent" else "queued, not sent yet")
+                            + ". No bank is called; this is synthetic data.")
+        return out
+
+    def _finding_value(self, finding_id: str) -> dict:
+        return json.loads(self.g.ro_query("MATCH (f:Finding {id: $f}) RETURN f.value", params={"f": finding_id}).result_set[0][0])
+
+    def _dispatch(self, order: dict, case: dict, plan_finding_id: str, ver: dict) -> dict:
+        return dispatcher.dispatch(self, order["order_id"], order["plan_id"], order["plan_hash"], order, case,
+                                   self._finding_value(plan_finding_id), ver)
+
+    def _order(self, order_id: str) -> dict:
+        rows = self.g.ro_query(
+            "MATCH (p:FreezePlan)-[:ORDERED_AS]->(o:FreezeOrder {id: $o}) OPTIONAL MATCH (o)-[:FOR_ACCOUNT]->(a:Account) "
+            "RETURN p.id, o, collect(a.id)", params={"o": order_id}).result_set
+        if not rows:
+            raise ToolError("UNKNOWN_ORDER", f"order {order_id!r} not found")
+        pid, o, accts = rows[0]
+        o = o.properties
+        return {"order_id": order_id, "plan_id": pid, "approver": o["approver"], "reason": o["reason"], "accounts": sorted(accts),
+                "plan_hash": o["plan_hash"], "data_version": int(o["data_version"]), "verification_finding_id": o["verification"],
+                "recorded_at": int(o["created_at"]), "status": o["status"]}
+
+    def retry_dispatch(self, order_id: str) -> dict:
+        """Send a queued freeze request again (HTTP only, like the approval). Idempotent: one issue per plan hash."""
+        order = self._order(order_id)
+        if order["status"] != "recorded":
+            raise ToolError("ORDER_WITHDRAWN", "this order was withdrawn; approve the plan again if it should go out")
+        info = self._plan(order["plan_id"])
+        order["case_id"] = info["case_id"]
+        dp = self._dispatch(order, self._case(info["case_id"]), info["finding_id"], self._finding_value(order["verification_finding_id"]))
+        return {**order, "dispatch": dp}
+
+    def withdraw_order(self, order_id: str, who: str, reason: str) -> dict:
+        """A named person withdraws an order: holds are lifted and the withdrawal is recorded, never silent."""
+        who, reason = (who or "").strip(), (reason or "").strip()
+        if not 2 <= len(who) <= 60 or len(reason) > 300:
+            raise ToolError("BAD_ARGUMENT", "name must be 2 to 60 characters and reason at most 300")
+        order = self._order(order_id)
+        if order["status"] != "recorded":
+            raise ToolError("ORDER_WITHDRAWN", "this order is already withdrawn")
+        self._write("MATCH (o:FreezeOrder {id: $o}) SET o.status = 'withdrawn', o.withdrawn_by = $w, o.withdrawn_reason = $r, "
+                    "o.withdrawn_at = $now", {"o": order_id, "w": who, "r": reason, "now": int(time.time())})
+        dispatcher.lift_holds(self, order_id)
+        live = self.g.ro_query("MATCH (o:FreezeOrder {plan_hash: $h, status: 'recorded'}) RETURN count(o)",
+                               params={"h": order["plan_hash"]}).result_set[0][0]
+        row = self.g.ro_query("MATCH (:FreezeOrder {id: $o})-[:DISPATCHED_AS]->(d:Dispatch) RETURN d.status, d.url",
+                              params={"o": order_id}).result_set
+        if not live and row and row[0][0] == "sent":  # no other live order still stands behind the filed request
+            dispatcher.comment_withdrawn(row[0][1], who, reason)
+        return {**order, "status": "withdrawn", "withdrawn_by": who, "holds_lifted": True}
 
     def reset_demo_state(self) -> dict:
         """Remove simulated late data and all saved cases, returning the graph to its loaded state."""
         self._write("MATCH ()-[t:TRANSFER]->() WHERE t.batch > 0 DELETE t", {})
         self._write("MATCH (a:Account) WHERE a.id STARTS WITH '000000:' DETACH DELETE a", {})
         self._write("MATCH (b:Batch) WHERE b.id > 0 DELETE b", {})
+        self._write("MATCH (:FreezeOrder)-[:FOR_ACCOUNT]->(a:Account) REMOVE a.hold, a.hold_since", {})
         self._write("MATCH (c:Case) OPTIONAL MATCH (c)-[:HAS]->(f:Finding) OPTIONAL MATCH (f)-[:HAS_PLAN]->(p:FreezePlan) "
-                    "OPTIONAL MATCH (p)-[:ORDERED_AS]->(o:FreezeOrder) "
-                    "OPTIONAL MATCH (tc:ToolCall)-[:RUN_IN]->(c) DETACH DELETE o, p, f, tc, c", {})
+                    "OPTIONAL MATCH (p)-[:ORDERED_AS]->(o:FreezeOrder) OPTIONAL MATCH (o)-[:DISPATCHED_AS]->(d:Dispatch) "
+                    "OPTIONAL MATCH (tc:ToolCall)-[:RUN_IN]->(c) DETACH DELETE d, o, p, f, tc, c", {})
         return {"reset": True, "latest_data_version": self.latest_batch()}
 
     # ------------------------------------------------------------------ second agent: audit through shared state

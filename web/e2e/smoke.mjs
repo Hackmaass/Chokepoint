@@ -6,6 +6,7 @@
 //
 // Uses replay mode, so it makes no model calls. Failure states are produced by intercepting the API in the page.
 import { existsSync } from 'node:fs'
+import { createServer } from 'node:http'
 import { chromium } from 'playwright-core'
 
 const BASE = process.env.BASE_URL || 'http://localhost:8000'
@@ -14,6 +15,24 @@ const CHROME =
   ['C:/Program Files/Google/Chrome/Application/chrome.exe', '/usr/bin/google-chrome', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'].find((p) =>
     existsSync(p),
   )
+
+// A stand-in for GitHub's issues API. Start the app with OPS_GITHUB_API=http://127.0.0.1:9101 OPS_GITHUB_TOKEN=e2e
+// to check the Dispatched path; without them the app has no token and the test expects the honest "Queued" state.
+const mockIssues = []
+const mock = createServer((req, res) => {
+  let body = ''
+  req.on('data', (c) => (body += c))
+  req.on('end', () => {
+    res.setHeader('Content-Type', 'application/json')
+    if (req.method === 'GET') return res.end(JSON.stringify(mockIssues))
+    const n = mockIssues.length + 1
+    mockIssues.push({ title: JSON.parse(body).title, html_url: `http://127.0.0.1:9101/issues/${n}` })
+    res.statusCode = 201
+    res.end(JSON.stringify(mockIssues[n - 1]))
+  })
+})
+await new Promise((r) => mock.listen(9101, '127.0.0.1', r))
+const DISPATCH_MOCKED = process.env.OPS_MOCK === '1'
 
 const browser = await chromium.launch({ executablePath: CHROME, headless: true })
 const failures = []
@@ -219,6 +238,12 @@ async function open(viewport, intercept) {
   await page.getByText(/Freeze order fo-/).waitFor({ timeout: 10000 })
   check(await page.getByText(/bound to plan hash/).isVisible(), 'approval: the order is recorded and bound to the plan by a hash')
   check(await page.getByText(/No bank is called/).first().isVisible(), 'approval: the page says no bank is called')
+  if (DISPATCH_MOCKED) {
+    check(await page.getByText('Dispatched', { exact: false }).first().isVisible() && (await page.getByRole('link', { name: /freeze request filed/ }).getAttribute('href')) === 'http://127.0.0.1:9101/issues/1', 'dispatch: the card shows Dispatched with a link to the filed request')
+    check(mockIssues.length === 1, 'dispatch: exactly one issue was filed')
+  } else {
+    check(await page.getByText(/Queued, not sent/).isVisible(), 'dispatch: with no token the card says queued, not sent')
+  }
   const toolReply = await page.evaluate(() => fetch('/api/tools/order_freeze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then((r) => r.status))
   check(toolReply === 404, 'approval: the model-facing tool route does not know it')
   await ctx.close()
@@ -266,6 +291,7 @@ async function open(viewport, intercept) {
 }
 
 await browser.close()
+mock.close()
 if (failures.length) {
   console.error(`\n${failures.length} check(s) failed`)
   process.exit(1)
