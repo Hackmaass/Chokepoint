@@ -1,9 +1,22 @@
+import { Tour, TourWelcome, type TourStep } from './Tour'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Graph from './Graph'
 import { api, buildCard, errorText, openRunStream, STEP_NAMES, usd, usd2, type Card, type CaseRow, type Example, type GraphView, type Ready, type TraceEvent } from './api'
 
 type Mode = 'live' | 'replay' | 'tools'
 type Tab = 'steps' | 'compare' | 'receipt' | 'changes' | 'audit'
+
+const TOUR_KEY = 'chokepoint.tour'
+const TOUR: TourStep[] = [
+  { id: 'alert', target: 'alert', title: 'Start from an alert', body: "An alert names one account that held stolen money and the time it was flagged. These examples come from IBM's synthetic transfers. Replay plays a saved agent run, so it takes no model call." },
+  { id: 'map', target: 'map', needsResult: true, title: 'Every route out', body: 'The diamond is the alerted account and the green squares are the perimeter, three hops out. Lines are the transfers of the 7 days before the alert. Dashed lines are routes the plan has cut; Play routes shows them hop by hop.' },
+  { id: 'hero', target: 'hero', needsResult: true, title: 'How much is at risk', body: 'The most money that could still reach the perimeter along these transfers. It is a ceiling worked out from past transfers, not a forecast.' },
+  { id: 'plan', target: 'plan', needsResult: true, title: 'The accounts to freeze', body: 'The cheapest set of accounts that cuts every route. The amount beside each is what it received from the alerted account’s downstream network, an upper bound on what a hold would have to cover.' },
+  { id: 'verified', target: 'verified', needsResult: true, title: 'A check on a copy', body: 'Chokepoint deletes those accounts from a copy of the graph and searches again. Green means no route to the perimeter is left in the recorded transfers. It is a consistency check on the same data, not proof about the real world.' },
+  { id: 'timing', target: 'timing', needsResult: true, title: 'Does time order change it?', body: "Money cannot go back in time. This line keeps only routes whose transfers happen in order. In three of the eight examples no route survives, so try the others." },
+  { id: 'tabs', target: 'tabs', needsResult: true, title: 'Compare, receipt, audit', body: 'Compare sets the plan beside a same-size rule of thumb. Receipt shows the tool run behind each result. Audit lets a second agent, which sees only the graph, record a verdict.' },
+  { id: 'done', title: 'That is the loop', body: 'Pick another alert above, or use Tools only to run the same steps without the agent. Everything here is synthetic, and a plan is a recommendation, not an instruction.' },
+]
 
 function loadTheme(): string {
   try {
@@ -46,6 +59,9 @@ export default function App() {
   const [recent, setRecent] = useState<CaseRow[]>([])
   const [account, setAccount] = useState('')
   const [fullSummary, setFullSummary] = useState(false)
+  const [tour, setTour] = useState<'off' | 'welcome' | 'steps'>('off')
+  const [pendingTourRun, setPendingTourRun] = useState(false)
+  const tourButton = useRef<HTMLButtonElement>(null)
   const [alertTs, setAlertTs] = useState('')
   const [mode, setMode] = useState<Mode>('replay')
   const [server, setServer] = useState<Ready>({ ready: false, state: 'checking' })
@@ -75,6 +91,23 @@ export default function App() {
   const replayUnavailable = examples.length > 0 && exSel < 0
   const runMode: Mode = mode === 'replay' && replayUnavailable ? 'tools' : mode
   const notice = runMode !== mode ? 'Saved runs exist only for the example alerts, so this custom alert uses Tools only.' : ''
+
+  // First visit: offer the tour once the data is ready. Automated browsers (tests, recordings) are never interrupted.
+  useEffect(() => {
+    if (tour !== 'off' || !server.ready || examples.length === 0 || navigator.webdriver) return
+    try { if (localStorage.getItem(TOUR_KEY)) return } catch { return }
+    const t = window.setTimeout(() => setTour('welcome'), 700)
+    return () => window.clearTimeout(t)
+  }, [server.ready, examples.length, tour])
+
+  // The tour plays the first example in Replay: wait for the form to hold it, then run once.
+  useEffect(() => {
+    const x = examples[0]
+    if (pendingTourRun && x && account === x.account && alertTs === x.alert_ts && runMode === 'replay' && !running) {
+      setPendingTourRun(false)
+      run()
+    }
+  }, [pendingTourRun, account, alertTs, runMode, running, examples]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     api.examples().then((x) => {
@@ -363,6 +396,22 @@ export default function App() {
   const sameSet = !!plan?.time_ordered && plan.time_ordered.accounts.length === plan.chokepoint.accounts.length && plan.time_ordered.accounts.every((a) => plan.chokepoint.accounts.includes(a))
   const noRoute = card.case && !card.case.has_route_to_perimeter
   const verifiedLine = card.verification
+  const tourReady = (!!plan && !!card.verification && !running) || (!running && !!(error || runError))
+  function startTour() {
+    const x = examples[0]
+    if (!x) return
+    setAccount(x.account)
+    setAlertTs(x.alert_ts)
+    setMode('replay')
+    setPendingTourRun(true)
+    setTour('steps')
+  }
+  function endTour() {
+    try { localStorage.setItem(TOUR_KEY, 'done') } catch { /* private mode: the tour just offers itself again */ }
+    setTour('off')
+    setPendingTourRun(false)
+    tourButton.current?.focus()
+  }
   const canRun = server.ready && !running && !!account && !!alertTs
   const shownError = error || (runError ? friendlyRunError(runError) : '')
 
@@ -399,6 +448,7 @@ export default function App() {
           ))}
         </div>
         <span className="badge">Synthetic data</span>
+        <button ref={tourButton} className="btn small tour-trigger" disabled={!server.ready || examples.length === 0} onClick={startTour}>Tour</button>
         <button className="btn small" onClick={() => setTheme(effectiveTheme === 'dark' ? 'light' : 'dark')} aria-label="Toggle light and dark theme">
           {effectiveTheme === 'dark' ? 'Light' : 'Dark'}
         </button>
@@ -419,7 +469,7 @@ export default function App() {
 
       <main className="main" id="main">
         <section className="left" aria-label="Case and graph">
-          <div className="panel">
+          <div className="panel" data-tour="alert">
             <div className="row">
               <div className="field">
                 <label htmlFor="ex">Example alert (chosen where a rule of thumb leaves money movable)</label>
@@ -454,7 +504,7 @@ export default function App() {
             )}
           </div>
 
-          <div className="panel canvas-wrap">
+          <div className="panel canvas-wrap" data-tour="map">
             {view ? (
               <Graph view={view} showRule={showRule} verified={verified} theme={theme} />
             ) : (
@@ -475,6 +525,9 @@ export default function App() {
                   <button className="btn primary center-self" disabled={!canRun} onClick={run}>
                     {server.ready ? (exSel >= 0 ? 'Run the example alert' : 'Investigate this alert') : 'Waiting for the database…'}
                   </button>
+                )}
+                {!running && server.ready && examples.length > 0 && (
+                  <button className="link-btn" onClick={startTour}>New here? Take the one-minute tour</button>
                 )}
               </div>
             )}
@@ -507,7 +560,7 @@ export default function App() {
           <div className="panel" aria-live="polite">
             {movable !== undefined ? (
               <>
-                <h1 className="hero">
+                <h1 className="hero" data-tour="hero">
                   {usd(movable)}
                   <small>can move along these routes · route capacity from past transfers, not a forecast</small>
                 </h1>
@@ -521,7 +574,7 @@ export default function App() {
                       <button className="btn small" onClick={copyPlan}>{copied ? 'Copied' : 'Copy account list'}</button>
                     </div>
                     {verifiedLine ? (
-                      <span className={`chip ${verifiedLine.verified ? 'good' : 'bad'}`}>
+                      <span className={`chip ${verifiedLine.verified ? 'good' : 'bad'}`} data-tour="verified">
                         <span className="ico" aria-hidden><Icon kind={verifiedLine.verified ? 'check' : 'cross'} /></span>
                         {verifiedLine.verified ? `Verified: no route left to the ${plan.perimeter_hops}-hop perimeter` : 'Not verified: routes remain'}
                       </span>
@@ -532,7 +585,7 @@ export default function App() {
                     )}
                     {verifiedLine && <details className="how-checked"><summary>How this was checked</summary><p className="note">{verifiedLine.method}</p></details>}
                     {plan.chokepoint.accounts.length > 0 && (
-                      <ul className="acct-list" aria-label="Accounts to freeze">
+                      <ul className="acct-list" aria-label="Accounts to freeze" data-tour="plan">
                         {plan.chokepoint.accounts.map((a) => (
                           <li key={a}>
                             <span className="mono">{a}</span>
@@ -543,7 +596,7 @@ export default function App() {
                       </ul>
                     )}
                     {plan.time_ordered && (
-                      <p className="note timing-line">
+                      <p className="note timing-line" data-tour="timing">
                         <strong>Timing check:</strong>{' '}
                         {plan.time_ordered.has_time_ordered_route
                           ? `${plan.time_ordered.time_ordered_pairs} of ${plan.time_ordered.transfer_pairs} links can carry money in time order; the freeze needs ${plan.time_ordered.count} account${plan.time_ordered.count === 1 ? '' : 's'}${sameSet ? ', the same accounts as above' : ` (${plan.chokepoint.count} above; ${plan.time_ordered.accounts.length === 0 ? 'none needed' : plan.time_ordered.accounts.every((a) => plan.chokepoint.accounts.includes(a)) ? 'a subset' : 'a different set'})`}.`
@@ -601,7 +654,7 @@ export default function App() {
           </div>
 
           <div className="panel">
-            <div className="tabs" role="tablist" aria-label="Case details" onKeyDown={(e) => {
+            <div className="tabs" role="tablist" aria-label="Case details" data-tour="tabs" onKeyDown={(e) => {
               if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft' && e.key !== 'Home' && e.key !== 'End') return
               const ids = [...e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
               const at = ids.findIndex((b) => b === document.activeElement)
@@ -764,6 +817,8 @@ export default function App() {
           <a href="https://github.com/Hackmaass/Chokepoint" target="_blank" rel="noreferrer">Source</a>
         </span>
       </footer>
+      {tour === 'welcome' && <TourWelcome onStart={startTour} onSkip={endTour} />}
+      {tour === 'steps' && <Tour steps={TOUR} ready={tourReady} onClose={endTour} onFinish={endTour} />}
     </div>
   )
 }

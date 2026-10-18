@@ -121,6 +121,31 @@ async function open(viewport, intercept) {
   check(problems.length === 0, `no console errors (${problems.join(' | ') || 'none'})`)
 }
 
+// 9. Guided tour: offered on a first visit, walks the saved example to the end, leaves on Escape, and remembers it was seen.
+{
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
+  await ctx.addInitScript(() => Object.defineProperty(navigator, 'webdriver', { get: () => false })) // look like a person
+  const page = await ctx.newPage()
+  await page.goto(BASE)
+  await page.waitForSelector('.tour-card.welcome', { timeout: 15000 })
+  check(true, 'tour: the welcome card is offered on a first visit')
+  await page.getByRole('button', { name: 'Start the tour' }).click()
+  for (let n = 0; n < 7; n++) {
+    await page.waitForFunction(() => !document.querySelector('.tour-card .btn.primary')?.disabled, null, { timeout: 30000 })
+    await page.getByRole('button', { name: 'Next' }).click()
+  }
+  check(await page.getByRole('button', { name: 'Explore on my own' }).isVisible(), 'tour: eight steps reach the last card')
+  await page.keyboard.press('Escape')
+  check((await page.locator('.tour').count()) === 0, 'tour: Escape leaves it')
+  check((await page.evaluate(() => localStorage.getItem('chokepoint.tour'))) === 'done', 'tour: a seen tour is remembered')
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.waitForTimeout(1200)
+  check((await page.locator('.tour').count()) === 0, 'tour: it does not come back on the next visit')
+  await page.getByRole('button', { name: 'Tour', exact: true }).click()
+  check((await page.locator('.tour-card').count()) === 1, 'tour: the Tour button reopens it')
+  await ctx.close()
+}
+
 // 8. Late data (demo mode only): banner, re-run only the affected findings, and a replay that no longer matches says
 //    why and offers a reset. The demo data is reset afterwards.
 {
