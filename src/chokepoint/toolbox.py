@@ -364,6 +364,12 @@ class Toolbox:
             if p in g:
                 anc |= nx.ancestors(g, p) | {p}
         onroute = reach & anc
+        # money each account received from the alerted account's downstream network in the window; an upper bound on
+        # what a hold would have to cover (the dataset has no balances, so this is not a share of any balance)
+        traced_in: dict[str, int] = defaultdict(int)
+        for (s_, d_), (_n, _l, usd) in trans.items():
+            if s_ in reach:
+                traced_in[d_] += int(usd)
 
         before, _, _, _ = self._money_flow(region, trans, perimeter, set(), "before")
         after_cp, _, _, _ = self._money_flow(region, trans, perimeter, set(frozen), "cp")
@@ -377,6 +383,7 @@ class Toolbox:
                                                                 sorted(perimeter)), accts),
                 "on_a_route_to_perimeter": sum(1 for a in accts if a in onroute),
                 "baseline_activity_transfers": int(sum(base.get(a, 0) for a in accts)),
+                "traced_in_usd_cents": {a: traced_in.get(a, 0) for a in accts},
             }
 
         result = {

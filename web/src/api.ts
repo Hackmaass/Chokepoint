@@ -16,6 +16,7 @@ export type PlanSide = {
   routes_left: boolean
   on_a_route_to_perimeter: number
   baseline_activity_transfers: number
+  traced_in_usd_cents?: Record<string, number>
   cost?: number
   solver?: string
   rule?: string

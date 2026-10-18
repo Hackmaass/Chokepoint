@@ -51,6 +51,7 @@ def test_freeze_plan_cuts_everything_and_beats_the_rule_of_thumb_guarantee(tb, g
     assert cp["count"] == rule["count"] > 0  # equal budget
     assert rule["residual_movable_usd_cents"] >= cp["residual_movable_usd_cents"]
     assert cp["on_a_route_to_perimeter"] == cp["count"]
+    assert set(cp["traced_in_usd_cents"]) == set(cp["accounts"]) and all(v >= 0 for v in cp["traced_in_usd_cents"].values())
     assert good_case["case_id"] and p["plan_id"].startswith("p-")
 
 

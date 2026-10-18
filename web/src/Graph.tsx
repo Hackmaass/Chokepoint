@@ -22,9 +22,9 @@ function styles(): StylesheetJson {
   const surface = css('--surface-1')
   return [
     { selector: 'node', style: { width: 10, height: 10, 'background-color': muted, 'border-width': 2, 'border-color': surface } },
-    { selector: 'node[role="origin"]', style: { shape: 'diamond', width: 26, height: 26, 'background-color': ink, label: 'alerted', 'font-size': 11, color: ink, 'text-valign': 'bottom', 'text-margin-y': 6 } },
+    { selector: 'node[role="origin"]', style: { shape: 'diamond', width: 26, height: 26, 'background-color': ink, label: 'alerted', 'font-family': 'Geist Mono, IBM Plex Mono, monospace', 'font-size': 10, 'font-weight': 500, color: ink, 'text-valign': 'bottom', 'text-margin-y': 6 } },
     { selector: 'node[role="perimeter"]', style: { shape: 'square', width: 11, height: 11, 'background-color': exit } },
-    { selector: 'node[role="frozen"]', style: { shape: 'ellipse', width: 24, height: 24, 'background-color': frozen, 'background-image': X_ICON, 'background-fit': 'contain', 'border-color': surface, 'border-width': 2, label: 'data(short)', 'font-size': 10, color: ink, 'text-valign': 'bottom', 'text-margin-y': 5, 'text-background-color': surface, 'text-background-opacity': 0.85, 'text-background-padding': '2px' } },
+    { selector: 'node[role="frozen"]', style: { shape: 'ellipse', width: 24, height: 24, 'background-color': frozen, 'background-image': X_ICON, 'background-fit': 'contain', 'border-color': surface, 'border-width': 2, label: 'data(short)', 'font-family': 'Geist Mono, IBM Plex Mono, monospace', 'font-size': 9, color: ink, 'text-valign': 'bottom', 'text-margin-y': 5, 'text-background-color': surface, 'text-background-opacity': 0.85, 'text-background-padding': '2px' } },
     { selector: 'node[role="rule"]', style: { shape: 'ellipse', width: 20, height: 20, 'background-color': surface, 'border-color': frozen, 'border-width': 2, 'border-style': 'dashed' } },
     { selector: 'node:selected', style: { 'border-color': ink, 'border-width': 3 } },
     { selector: 'edge', style: { width: 1, 'line-color': hair, 'target-arrow-color': hair, 'target-arrow-shape': 'triangle', 'arrow-scale': 0.7, 'curve-style': 'bezier', opacity: 0.8, 'transition-property': 'opacity, width, line-color, target-arrow-color', 'transition-duration': 420 } },
@@ -160,7 +160,7 @@ export default function Graph({ view, showRule, verified, theme }: Props) {
         <button className="btn small" onClick={() => cy.current?.zoom(cy.current.zoom() * 1.25)}>Zoom in</button>
         <button className="btn small" onClick={() => cy.current?.zoom(cy.current.zoom() / 1.25)}>Zoom out</button>
       </div>
-      <div id="graph-tip" className="mono" style={{ position: 'absolute', left: 12, bottom: 12, right: 12, opacity: 0, background: 'var(--surface-1)', border: '1px solid var(--border-ring)', borderRadius: 6, padding: '4px 8px', pointerEvents: 'none', boxShadow: '0 4px 16px rgba(0,0,0,.12)' }} />
+      <div id="graph-tip" className="graph-tip mono" />
     </>
   )
 }

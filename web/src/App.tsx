@@ -358,11 +358,20 @@ export default function App() {
 
   return (
     <div className="app">
+      <a className="skip-link" href="#main">Skip to the case</a>
       <header className="header">
-        <span className="brand">Chokepoint</span>
-        <div className="field" style={{ gap: 0 }}>
+        <span className="brand">
+          <svg className="brand-mark" viewBox="0 0 26 26" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
+            <path d="M3 5l9 8M3 21l9-8M14 13h9" />
+            <circle cx="13" cy="13" r="3" fill="currentColor" stroke="none" />
+            <path d="M18.5 8.5l5 9" stroke="var(--data-frozen)" />
+          </svg>
+          Chokepoint
+          <span className="brand-sub">freeze plans, verified</span>
+        </span>
+        <div className="field">
           <label className="sr-only" htmlFor="recent">Saved cases</label>
-          <select id="recent" className="input" style={{ height: 32 }} value="" onChange={(e) => resume(e.target.value)}>
+          <select id="recent" className="input select-compact" value="" onChange={(e) => resume(e.target.value)}>
             <option value="">Resume a saved case…</option>
             {recent.map((c) => (
               <option key={c.case_id} value={c.case_id}>{c.alerted_account} · {c.alert_ts} · {c.case_id}</option>
@@ -398,7 +407,7 @@ export default function App() {
         </div>
       )}
 
-      <main className="main">
+      <main className="main" id="main">
         <section className="left" aria-label="Case and graph">
           <div className="panel">
             <div className="row">
@@ -415,7 +424,7 @@ export default function App() {
                 <label htmlFor="acct">Alerted account (bank:account)</label>
                 <input id="acct" className="input mono" value={account} onChange={(e) => setAccount(e.target.value)} />
               </div>
-              <div className="field" style={{ flex: '0 1 190px' }}>
+              <div className="field ts">
                 <label htmlFor="ts">Alert time (UTC)</label>
                 <input id="ts" className="input mono" value={alertTs} onChange={(e) => setAlertTs(e.target.value)} />
               </div>
@@ -429,7 +438,7 @@ export default function App() {
               <p className="error" role="alert">
                 {shownError}
                 {demo && shownError.includes('reset the demo data') && (
-                  <button className="btn small" style={{ marginLeft: 12 }} disabled={busy} onClick={resetDemo}>Reset demo data</button>
+                  <button className="btn small ml-12" disabled={busy} onClick={resetDemo}>Reset demo data</button>
                 )}
               </p>
             )}
@@ -440,6 +449,12 @@ export default function App() {
               <Graph view={view} showRule={showRule} verified={verified} theme={theme} />
             ) : (
               <div className="canvas-empty">
+                <svg className="empty-glyph" viewBox="0 0 84 84" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden>
+                  <circle cx="14" cy="42" r="4" fill="currentColor" stroke="none" />
+                  <path d="M18 42h14M36 42l16-20M36 42h16M36 42l16 20" strokeDasharray="2 4" />
+                  <rect x="52" y="18" width="8" height="8" /><rect x="52" y="38" width="8" height="8" /><rect x="52" y="58" width="8" height="8" />
+                  <path d="M62 30l14 24M76 30L62 54" stroke="var(--data-frozen)" strokeWidth="2" />
+                </svg>
                 <h2>{running ? 'Opening the case…' : 'Where can the money still go?'}</h2>
                 <p>
                   {running
@@ -447,7 +462,7 @@ export default function App() {
                     : 'An alerted account is one flagged for holding stolen money that has already started moving. Chokepoint looks for a small set of accounts that cuts every route the money could take in past transfers, then checks the result.'}
                 </p>
                 {!running && (
-                  <button className="btn primary" style={{ justifySelf: 'center' }} disabled={!canRun} onClick={run}>
+                  <button className="btn primary center-self" disabled={!canRun} onClick={run}>
                     {server.ready ? (exSel >= 0 ? 'Run the example alert' : 'Investigate this alert') : 'Waiting for the database…'}
                   </button>
                 )}
@@ -464,13 +479,13 @@ export default function App() {
               <span><i className="sw line" /> route that can carry money</span>
               {view?.truncated && <span>Showing {view.shown_accounts} of {view.total_accounts} accounts</span>}
             </div>
-            <p className="note">
+            <p className="note legend-note">
               {card.case ? `Transfers in the ${card.case.window_days} days before the alert · ${card.case.perimeter_hops}-hop perimeter · data version ${card.case.data_version}` : 'Static view of past transfers; it does not know what happens after the alert.'}
               {demo && caseId && (
-                <button className="btn small" style={{ marginLeft: 16 }} disabled={busy} onClick={simulateLate}>Simulate late transfers</button>
+                <button className="btn small" disabled={busy} onClick={simulateLate}>Simulate late transfers</button>
               )}
               {view && card.plan && (
-                <label style={{ marginLeft: 16 }}>
+                <label>
                   <input type="checkbox" checked={showRule} onChange={(e) => setShowRule(e.target.checked)} /> Show the rule-of-thumb picks
                 </label>
               )}
@@ -482,6 +497,7 @@ export default function App() {
           <div className="panel" aria-live="polite">
             {movable !== undefined ? (
               <>
+                <p className="eyebrow">Money at risk</p>
                 <h1 className="hero">
                   {usd(movable)}
                   <small>can move along these routes · route capacity from past transfers, not a forecast</small>
@@ -509,11 +525,18 @@ export default function App() {
                   </>
                 )}
               </>
+            ) : running ? (
+              <div aria-busy="true">
+                <p className="eyebrow">Money at risk</p>
+                <span className="skeleton hero-sk" />
+                <span className="skeleton line-sk" />
+                <span className="skeleton chip-sk" />
+              </div>
             ) : noRoute ? (
               <div className="banner" role="note"><span className="ico" aria-hidden>!</span><span>No route to the perimeter in this window. Widen the window or check the account.</span></div>
             ) : (
               <div>
-                <h2 className="card-line" style={{ margin: 0 }}>What you get</h2>
+                <h2 className="how-title">What you get</h2>
                 <ol className="how">
                   <li><strong>The money at risk.</strong> How much could still move out of reach, from past transfers.</li>
                   <li><strong>A freeze plan.</strong> A small set of accounts that cuts every route to the perimeter in past transfers, compared with a simple rule of thumb.</li>
@@ -527,7 +550,7 @@ export default function App() {
                 {unmatched && !unmatched.faithful && (
                   <span className="banner" role="note"><span className="ico" aria-hidden>!</span><span>This summary mentions a figure that no tool returned ({[...unmatched.unmatched_amounts, ...unmatched.unmatched_accounts].join(', ')}). Rely on the cards and tables, not the text.</span></span>
                 )}
-                <span className="note" style={{ display: 'block' }}>
+                <span className="note block">
                   {cachedRun ? 'Replay: this is a saved run, not a live response. ' : ''}The model writes the words; the numbers on the cards come from the tools, and this summary is checked against them.
                 </span>
               </p>
@@ -556,12 +579,13 @@ export default function App() {
               {tab === 'steps' && (
                 <div aria-live="polite">
                   {steps.length === 0 && <p className="note">Steps appear here as the agent works. Each one is a tool run stored in the graph.</p>}
+                  <div className="timeline">
                   {steps.map((s, i) => (
                     <div key={i}>
                       {s.thought && <div className="decision"><strong>Agent note:</strong> {s.thought}</div>}
                       <details className="step">
                         <summary>
-                          <span aria-hidden>{s.ms === undefined ? '…' : s.ok ? '✓' : '✕'}</span>
+                          <span className={`mark ${s.ms === undefined ? 'run' : s.ok ? 'ok' : 'fail'}`} aria-hidden>{s.ms === undefined ? '' : s.ok ? '✓' : '✕'}</span>
                           <span className="name">{STEP_NAMES[s.tool] ?? s.tool}{s.cached ? ' (saved)' : ''}</span>
                           <span className="ms">{s.ms === undefined ? 'running' : `${(s.ms / 1000).toFixed(1)} s`}</span>
                         </summary>
@@ -569,6 +593,7 @@ export default function App() {
                       </details>
                     </div>
                   ))}
+                  </div>
                 </div>
               )}
               {tab === 'compare' && (
@@ -590,11 +615,11 @@ export default function App() {
                         </tbody>
                       </table>
                       <p className="note">The rule of thumb freezes the accounts the alerted account paid most recently. Held-out evaluation on 124 synthetic case-times: the two block about the same share of the money that had already escaped; Chokepoint's frozen accounts were more often part of the laundering (+19 points of precision) and its plan is checked on a copy of the graph to leave no route in the recorded transfers.</p>
-                      <table>
-                        <thead><tr><th>Chokepoint plan: accounts to freeze</th><th>Role</th></tr></thead>
+                      <table className="table-gap-lg">
+                        <thead><tr><th>Chokepoint plan: accounts to freeze</th><th>Role</th>{plan.chokepoint.traced_in_usd_cents && <th className="num" title="Money this account received from the alerted account's downstream network in the window. An upper bound on what a hold must cover; the data has no balances.">Traced in (max)</th>}</tr></thead>
                         <tbody>
                           {plan.chokepoint.accounts.map((a) => (
-                            <tr key={a}><td className="mono">{a}</td><td>{view?.nodes.find((n) => n.id === a)?.depth ?? '?'} hop(s) from the alerted account</td></tr>
+                            <tr key={a}><td className="mono">{a}</td><td>{view?.nodes.find((n) => n.id === a)?.depth ?? '?'} hop(s) from the alerted account</td>{plan.chokepoint.traced_in_usd_cents && <td className="num">{usd2(plan.chokepoint.traced_in_usd_cents[a] ?? 0)}</td>}</tr>
                           ))}
                         </tbody>
                       </table>
@@ -608,7 +633,7 @@ export default function App() {
                   <button className="btn small" disabled={audit?.running} onClick={askAuditor}>{audit?.running ? 'Auditing…' : runMode === 'tools' ? 'Run audit checks' : 'Ask the auditor'}</button>
                   {audit?.error && <p className="error" role="alert">{audit.error}</p>}
                   {audit?.checks && (
-                    <table style={{ marginTop: 12 }}>
+                    <table className="table-gap">
                       <thead><tr><th>Check</th><th>Result</th></tr></thead>
                       <tbody>
                         {audit.checks.map((c: any) => (
@@ -621,7 +646,7 @@ export default function App() {
                     </table>
                   )}
                   {audit?.verdict && (
-                    <div className="decision" style={{ marginTop: 12 }}>
+                    <div className="decision spaced">
                       <strong>Auditor verdict: {audit.verdict.replace('_', ' ')}.</strong> {audit.note}
                       <div className="note">Recorded in the graph as a finding; it appears when this case is resumed.</div>
                     </div>
@@ -656,7 +681,7 @@ export default function App() {
                       <button className="btn small" onClick={loadReceipt}>Open receipt for this plan</button>
                       {receipt && (
                         <>
-                          <table style={{ marginTop: 12 }}>
+                          <table className="table-gap">
                             <tbody>
                               <tr><th>Finding</th><td className="mono">{receipt.finding_id}</td></tr>
                               <tr><th>Produced by</th><td>{STEP_NAMES[receipt.tool] ?? receipt.tool} · solver {receipt.solver}</td></tr>
@@ -665,7 +690,7 @@ export default function App() {
                               <tr><th>Accounts read</th><td>{receipt.accounts_read}</td></tr>
                             </tbody>
                           </table>
-                          <button className="btn small" style={{ marginTop: 8 }} onClick={() => navigator.clipboard?.writeText(JSON.stringify(receipt, null, 2))}>Copy receipt</button>
+                          <button className="btn small mt-8" onClick={() => navigator.clipboard?.writeText(JSON.stringify(receipt, null, 2))}>Copy receipt</button>
                         </>
                       )}
                     </>
