@@ -1,0 +1,16 @@
+name: claims
+
+# Every headline number in the README, docs/for-judges.md and the landing page must equal claims.json, and each recorded
+# claim must be backed by its evidence file. Standard library only. (The measured claims are re-derived against the database
+# by `uv run python scripts/judge_check.py --claims`.)
+on:
+  push:
+    branches: [main, late-window]
+  pull_request:
+
+jobs:
+  claims:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/check_claims.py

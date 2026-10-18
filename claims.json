@@ -1,0 +1,11 @@
+{
+  "_note": "Headline numbers. 'measured' ones are re-derived by `uv run python scripts/judge_check.py --claims` (needs the database); 'recorded' ones must appear, with this value after rounding, in the named evidence file. scripts/check_claims.py checks every marker in the README, docs/for-judges.md and web/src/Landing.tsx against this file, and CI runs it.",
+  "repro_first_pass": {"value": "300", "kind": "measured", "what": "FalkorDB algo.maxFlow answer on the 11-edge repro"},
+  "repro_true": {"value": "453", "kind": "measured", "what": "true maximum flow of the 11-edge repro (pure-Python Edmonds-Karp)"},
+  "tie_diff": {"value": "-0.002", "kind": "recorded", "source": "docs/pilot-results.md", "evidence": "-0.002 [-0.093, +0.084]"},
+  "precision_gain": {"value": "+0.19", "kind": "recorded", "source": "docs/pilot-results.md", "evidence": "+0.188 [+0.070, +0.317]"},
+  "rule_needs_more": {"value": "64%", "kind": "recorded", "source": "docs/guarantee-and-latency.md", "evidence": "**64%**"},
+  "rule_median": {"value": "3", "kind": "recorded", "source": "docs/guarantee-and-latency.md", "evidence": "| most recent recipients | 3 |"},
+  "min_cut_median": {"value": "1", "kind": "recorded", "source": "docs/guarantee-and-latency.md", "evidence": "| Chokepoint (minimum cut) | 1 |"},
+  "latency_median": {"value": "0.27", "kind": "recorded", "source": "docs/guarantee-and-latency.md", "evidence": "median 0.27 s"}
+}

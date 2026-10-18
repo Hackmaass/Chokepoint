@@ -49,9 +49,9 @@ about 4 seconds. Want your own client? From a checkout, `uv run python -m chokep
 ## A removal test: the same case without the graph
 
 The no-graph arm is the rule of thumb an analyst would use without one: freeze the accounts the alerted account paid most recently,
-at the same number of accounts. On the held-out half it blocked about the same share of escaped laundering (difference -0.002,
-95% interval [-0.09, +0.08]) and was less precise (+0.19 for the cut, [+0.07, +0.32]). It could not tell when it was done: to leave no
-route it needed more accounts than the minimum cut in 64% of cases (median 3 against 1, `guarantee-and-latency.md`). So what the
+at the same number of accounts. On the held-out half it blocked about the same share of escaped laundering (difference <!--claim:tie_diff-->-0.002<!--/claim-->,
+95% interval [-0.09, +0.08]) and was less precise (<!--claim:precision_gain-->+0.19<!--/claim--> for the cut, [+0.07, +0.32]). It could not tell when it was done: to leave no
+route it needed more accounts than the minimum cut in <!--claim:rule_needs_more-->64%<!--/claim--> of cases (median <!--claim:rule_median-->3<!--/claim--> against <!--claim:min_cut_median-->1<!--/claim-->, `guarantee-and-latency.md`). So what the
 graph-backed plan adds is the guarantee, the precision and the receipt, not a larger blocked share. What FalkorDB supplies here is the per-hop
 queries over 4.5 million transfers, the max-flow and its in-database repair (`algo/residual.py`), the route checks (`algo.BFS`), the
 independent `GRAPH.COPY` check and a home for the receipts and case memory in the same graph. NetworkX appears only in tests as an
@@ -75,7 +75,7 @@ and the original protocol (`docs/pilot-results.md`).
 ## What is new here, and why FalkorDB is load-bearing
 
 - **A FalkorDB finding with a workaround.** `algo.maxFlow` returned a non-maximal, flow-violating answer on 12 to 17% of random
-  node-split networks (two batches: 14 of 120 and 24 of about 140) (an 11-edge repro is in `docs/falkordb-bug-report-draft.md`; it still returns 300 instead of 453 on
+  node-split networks (two batches: 14 of 120 and 24 of about 140) (an 11-edge repro is in `docs/falkordb-bug-report-draft.md`; it still returns <!--claim:repro_first_pass-->300<!--/claim--> instead of <!--claim:repro_true-->453<!--/claim--> on
   v4.22.0). We use it as a first pass and accept an answer only with a feasibility-and-residual certificate, otherwise an exact
   solver runs: 0 false accepts on 120 random networks (`tests/test_cut_oracle.py`).
 - **The graph is the working memory, not a cache.** Cases, tool runs, findings, plans, receipts, supersession of stale findings and

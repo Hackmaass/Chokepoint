@@ -100,8 +100,8 @@ function Intervals() {
   const hi = 0.4
   const x = (v: number) => 24 + ((v - lo) / (hi - lo)) * 472
   const rows = [
-    { y: 64, label: 'Blocked share, difference from the rule of thumb', est: -0.002, a: -0.09, b: 0.08, note: 'Straddles zero: about the same', fmt: '−0.002, interval −0.09 to +0.08' },
-    { y: 188, label: 'Precision of the frozen accounts, difference', est: 0.19, a: 0.07, b: 0.32, note: 'Above zero: more often part of the laundering', fmt: '+0.19, interval +0.07 to +0.32' },
+    { y: 64, label: 'Blocked share, difference from the rule of thumb', est: -0.002, a: -0.09, b: 0.08, note: 'Straddles zero: about the same', fmt: '−0.002, interval −0.09 to +0.08' }, // claim:tie_diff=-0.002
+    { y: 188, label: 'Precision of the frozen accounts, difference', est: 0.19, a: 0.07, b: 0.32, note: 'Above zero: more often part of the laundering', fmt: '+0.19, interval +0.07 to +0.32' }, // claim:precision_gain=+0.19
   ]
   return (
     <figure className="intervals">

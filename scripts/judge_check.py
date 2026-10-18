@@ -27,6 +27,7 @@ from chokepoint.db import connect
 from chokepoint.toolbox import Toolbox
 
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+ap.add_argument("--claims", action="store_true", help="also re-derive the measured claims in claims.json and fail on any mismatch")
 ap.add_argument("--networks", type=int, default=40, help="random node-split networks for the certificate check")
 args = ap.parse_args()
 
@@ -115,6 +116,7 @@ try:
                   "relationshipTypes:['E'], capacityProperty:'cap'}) YIELD maxFlow RETURN maxFlow").result_set[0][0]
 finally:
     g.delete()
+measured_claims = {"repro_first_pass": str(int(got))}
 if int(got) == 453:
     line("INFO", "MEASURED  the 11-edge algo.maxFlow repro returns 453, the correct value, on this FalkorDB version",
          "the wrong answer (300) was seen on v4.22.0 and 6.0.2; the certificate stays in place either way")
@@ -248,6 +250,19 @@ for label, detail in [
      "docs/pilot-results.md, same commands"),
 ]:
     line("INFO", label, detail)
+
+if args.claims:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import check_claims
+    from falkordb_maxflow_repro import true_max_flow
+
+    measured_claims["repro_true"] = str(true_max_flow())
+    for key, c in check_claims.load().items():
+        if c["kind"] == "measured":
+            line("PASS" if measured_claims.get(key) == c["value"] else "FAIL",
+                 f"CLAIM     {key} = {c['value']} (re-derived: {measured_claims.get(key)})", c.get("what", ""))
+    for msg in check_claims.problems():
+        line("FAIL", "CLAIM     " + msg)
 
 for cid in case_ids:
     tb.delete_case(cid)
