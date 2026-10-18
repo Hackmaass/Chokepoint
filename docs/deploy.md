@@ -27,6 +27,8 @@ git clone https://github.com/Hackmaass/Chokepoint.git && cd Chokepoint
 cp .env.example .env
 #   set FALKORDB_PASSWORD to a long random value
 #   set NVIDIA_API_KEY (free key from build.nvidia.com); leave it empty to serve replay and tools-only modes only
+#   optional: OPS_GITHUB_TOKEN (fine-grained PAT, Issues read/write on the ops repo only) and OPS_GITHUB_REPO (default Hackmaass/chokepoint-ops)
+#     to file freeze requests after approval; without a token they stay 'queued'. Never commit it; put it only on a host you control.
 #   set DEMO_MODE=0 for a public host (see "Demo endpoints" below)
 
 # 3. Database, then the data (about 2 minutes), then the app

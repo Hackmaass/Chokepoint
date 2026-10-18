@@ -182,7 +182,7 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
     api.health().then((h) => {
       setDemo(h.demo)
       setLiveAvailable(h.live_available)
-      if (h.live_available) setMode('live')
+      if (h.live_available && !navigator.webdriver) setMode('live') // browser tests stay on replay, like the tour
     }).catch(() => undefined)
   }, [])
 
@@ -792,8 +792,8 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
                             <strong>Freeze order {o.order_id} {o.status === 'withdrawn' ? 'withdrawn' : 'recorded'}</strong> · approved by {o.approver} · bound to plan hash {o.plan_hash.slice(0, 12)} · data version {o.data_version}. No bank is called.{' '}
                             {o.status !== 'withdrawn' && o.dispatch && (o.dispatch.status === 'sent'
                               ? <><strong>Dispatched</strong>: <a href={o.dispatch.url} target="_blank" rel="noreferrer">freeze request filed</a> (synthetic), {o.dispatch.holds_placed} hold{o.dispatch.holds_placed === 1 ? '' : 's'} placed.{' '}</>
-                              : <><strong>Queued, not sent.</strong> {o.dispatch.holds_placed} hold{o.dispatch.holds_placed === 1 ? '' : 's'} placed, the freeze request has not been filed.{' '}
-                                <button className="link-btn" onClick={() => orderAction(o, 'retry')}>Retry dispatch</button>{' '}</>)}
+                              : <><strong>Queued, not sent.</strong> {o.dispatch.holds_placed} hold{o.dispatch.holds_placed === 1 ? '' : 's'} placed, the freeze request has not been filed{o.dispatch.note ? ` (${o.dispatch.note})` : ''}.{' '}
+                                {!o.dispatch.note?.startsWith('no OPS_GITHUB_TOKEN') && <><button className="link-btn" onClick={() => orderAction(o, 'retry')}>Retry dispatch</button>{' '}</>}</>)}
                             <button className="link-btn" onClick={() => navigator.clipboard?.writeText(orderText(o))}>Copy freeze order</button>
                             {o.status !== 'withdrawn' && <>{' '}<button className="link-btn" onClick={() => orderAction(o, 'withdraw')}>Withdraw</button></>}
                           </p>

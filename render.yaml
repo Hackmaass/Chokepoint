@@ -5,3 +5,6 @@ services:
     dockerfilePath: ./Dockerfile.hosted
     plan: free
     healthCheckPath: /api/health
+    envVars:
+      - key: OPS_GITHUB_TOKEN   # optional: freeze requests stay "queued" without it
+        sync: false

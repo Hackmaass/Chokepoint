@@ -3,6 +3,8 @@
   POST /api/runs               start an agent run (mode: live | replay)         -> {run_id}
   GET  /api/runs/{id}/events   SSE stream of the trace (resumable with Last-Event-ID)
   POST /api/tools/{tool}       call one tool directly (tool-only mode, no LLM)
+  POST /api/plans/{id}/order   a named person approves a checked plan (holds + freeze request); not a tool
+  POST /api/orders/{id}/dispatch   send a queued freeze request again;  DELETE /api/orders/{id}  withdraw an order
   GET  /api/cases              recent cases;  GET /api/cases/{id}  resume
   GET  /api/cases/{id}/graph   evidence subgraph for the screen (optional ?plan_id=)
   GET  /api/examples           curated example alerts

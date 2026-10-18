@@ -160,3 +160,12 @@ def test_the_model_cannot_reach_dispatch_or_approval():
     t = Toolbox.__new__(Toolbox)  # Toolbox.call reaches only tool_* methods
     for name in ("order_freeze", "retry_dispatch", "withdraw_order", "dispatch"):
         assert t.call(name, {})["error"]["code"] == "BAD_ARGUMENT"
+
+
+def test_visitor_text_cannot_mention_or_link_from_the_public_issue(tb, gh):
+    _, plan = checked_plan(tb)
+    evil = "@octocat [x](http://e) ![i](http://e) `x`"
+    tb.order_freeze(plan["plan_id"], evil, "cc @octocat")
+    body = json.loads(gh.posts[0])["body"]
+    assert "`@octocat [x](http://e) ![i](http://e) 'x'`" in body and "`cc @octocat`" in body
+    assert body.count("@octocat") == body.count("`@octocat") + body.count("cc @octocat`")

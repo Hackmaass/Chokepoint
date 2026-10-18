@@ -68,3 +68,11 @@ accepted now (whole dollars, and 5% for amounts written with a suffix).
 ("This summary mentions a figure that no tool returned") with the offending figures, and the numbers on the cards and tables
 always come from tools. So "the numbers on the cards come from tools" is true by construction; for the narrative it is
 checked, and an unmatched figure is flagged to the user rather than silently shown.
+
+## Live smoke run, 2026-10-19 (late-submission window; a smoke test, not an evaluation)
+
+One live run through the API (`POST /api/runs`, mode `live`, local server with the free NVIDIA key loaded) on example alert 2 with a typed
+question ("Is there a gentler plan that touches less everyday activity, and is it verified?"). Server log: `mode=live role=investigator
+outcome=ok`. The model called `open_case`, `flow`, `freeze_plan`, `verify_plan` (all ok), none served from the cache, no fallback to a saved
+run, 25 s end to end. This shows the live path and the typed-question path work; it makes no claim about answer quality, which is
+what the evaluation above measures.

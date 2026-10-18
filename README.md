@@ -8,7 +8,7 @@ Built for [Graph Hacks: Context for AI Agents](https://www.wemakedevs.org/hackat
 
 ## Changes after the Oct 18 deadline (late-submission window)
 
-The on-time submission is the tag [`graphhacks-ontime-submission`](https://github.com/Hackmaass/Chokepoint/releases/tag/graphhacks-ontime-submission) (commit `42465d7`, Oct 18 2026, 22:51 IST). Everything below was added afterwards on the `late-window` branch and is listed here so nothing is hidden; `git log graphhacks-ontime-submission..late-window` shows the exact commits.
+The on-time submission is the tag [`graphhacks-ontime-submission`](https://github.com/Hackmaass/Chokepoint/releases/tag/graphhacks-ontime-submission) (commit `42465d7`, Oct 18 2026, 22:51 IST). The live demo link above still serves the on-time build; the changes below are not deployed there. Everything below was added afterwards on the `late-window` branch and is listed here so nothing is hidden; `git log graphhacks-ontime-submission..late-window` shows the exact commits.
 
 - **Dispatcher** (`src/chokepoint/dispatch.py`): after a named person approves a verified plan, holds are placed on the frozen accounts in the graph and one freeze request is filed as a GitHub issue in a public ops repo (synthetic data, no bank is called). One issue per plan hash; if GitHub is unreachable or no token is set the dispatch stays `queued` and the UI says so. An order can be withdrawn by a named person, which lifts the holds. It is not a tool, not in MCP, and the model cannot reach it (tests assert this).
 - **Live agent by default when the server has a model key** (`NVIDIA_API_KEY`): the visitor can type their own question about an example alert. If the model is rate-limited or down, the run says "Live model unavailable right now, showing a recorded run" and plays the saved run for that alert (a custom question has no saved run and reports the failure). Tested with a mocked 429.
@@ -40,7 +40,7 @@ Given an alerted account and an alert time, the agent:
 3. **Builds a freeze plan**: the cheapest set of accounts whose removal cuts every route to the perimeter (a minimum-cost vertex cut), next to a same-size **rule-of-thumb plan** (freeze the accounts the alerted account paid most recently) for comparison.
 4. **Verifies the plan** on a copy of the graph with the frozen accounts deleted: is any route left? A second check re-expands the transfers from the source graph with the frozen accounts excluded and must agree.
 5. **Stores every result as a node with a receipt** (tool run, parameters, data version, solver, accounts read), so a case can be resumed in a later session and any answer can be traced back.
-6. **A person approves.** The app lists the checks that apply and a named person can record a freeze order, tied to the plan, its accounts, the data version and the check by a hash. It is refused for an unchecked plan, once newer transfers exist, or if the two checks disagree. It is an HTTP endpoint, not a tool, and not in MCP, so the model cannot call it; no bank is called.
+6. **A person approves.** The app lists the checks that apply and a named person can record a freeze order, tied to the plan, its accounts, the data version and the check by a hash. It is refused for an unchecked plan, once newer transfers exist, or if the two checks disagree. It is an HTTP endpoint, not a tool, and not in MCP, so the model cannot call it; no bank is called. On the `late-window` branch, approval also places holds on the frozen accounts in the graph and files one freeze request as a GitHub issue in a public ops repo (synthetic; see the late-changes section).
 
 Two more things sit on the card, both honest about their limits. A **timing check** keeps only routes whose transfers happen in time order (on the 8 examples, 3 have no time-ordered route and 2 need fewer accounts; it was added after the held-out run, so no claim beyond those 8; the verified plan itself is still static). **Gentler plans** offer other plans at a higher weight on everyday activity: on 2 of the 8 examples one exists (3 accounts and 21 everyday transfers become 5 and 6), each is checked before it can be approved, and it is a trade-off shown, not a claim that more accounts is better.
 
@@ -256,8 +256,8 @@ IBM "HI-Small" synthetic transactions (Altman et al., NeurIPS 2023 Datasets and 
 
 - Synthetic data; results do not predict real-world performance. A freeze plan is a recommendation, not an instruction.
 - The planner sees past transfers only and treats flow as static (the verified plan ignores the order of transfers; the card's timing check does not change it); about 55-60% of evaluation cases block nothing, for every method.
-- There is no bank data and there are no balances, so "traced in" amounts are upper bounds, not partial freezes, and an approval records a decision in the graph; no bank is called.
-- The public demo replays a saved agent run; new questions need the full stack and a model key.
+- There is no bank data and there are no balances, so "traced in" amounts are upper bounds, not partial freezes, and an approval records a decision in the graph (on `late-window` also holds in the graph and a freeze request filed in a public ops repo); no bank is called.
+- The public demo replays a saved agent run unless the host has a model key; typed questions need a key (live mode), and if the model is rate-limited an example alert falls back to its saved run.
 - Cases are selected using laundering labels (as a detector with perfect recall would); labels are never used by the planner and only score the evaluation.
 - "Perimeter K hops away" is a modelling choice; the data has no natural cash-out signal.
 - The free model can be rate-limited or slow; replay and tools-only modes exist for that reason.

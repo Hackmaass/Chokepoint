@@ -16,10 +16,10 @@ cases, findings, plans and receipts.
 
 **Gentler plans.** The same tool at a higher weight on everyday activity offers other plans: on 2 of the 8 examples, including the default alert, one exists (3 accounts and 21 everyday transfers become 5 accounts and 6); on the other 6 every weighting picks the same accounts. Each option is checked on a copy before it can be approved. This is a trade-off shown, not a claim that more accounts is better.
 
-**A person decides.** A checked plan can be approved by a named person in the app, after the form lists the checks that apply (verified, current, actionable, no routes left, the second check): the approval is recorded as a freeze order in the graph, tied to the plan, its accounts, the data version and the check by a hash, and it is refused for an unchecked plan or once newer transfers exist (`tests/test_order.py`). It is an HTTP endpoint, not a tool, so the model cannot call it, and no bank is called.
+**A person decides.** A checked plan can be approved by a named person in the app, after the form lists the checks that apply (verified, current, actionable, no routes left, the second check): the approval is recorded as a freeze order in the graph, tied to the plan, its accounts, the data version and the check by a hash, and it is refused for an unchecked plan or once newer transfers exist (`tests/test_order.py`). It is an HTTP endpoint, not a tool, so the model cannot call it, and no bank is called. In the late-submission build (branch `late-window`) the approval also places holds in the graph and files one freeze request as a GitHub issue in a public ops repo (synthetic data; `tests/test_dispatch.py`).
 
 **Not real:** there is no bank data, no account balances (so "Traced in" is an upper bound, not a partial freeze), and the public
-demo replays a saved agent run rather than answering new questions. The plan itself is not time-aware (only the card's timing
+demo replays a saved agent run rather than answering new questions (the late-submission build answers typed questions live when the host has a model key). The plan itself is not time-aware (only the card's timing
 check is). The held-out results are one synthetic dataset and carry no promise for real data. An AI coding assistant wrote most of
 the code ([`ai-work-log.md`](ai-work-log.md)).
 

@@ -28,6 +28,11 @@ def _cfg() -> tuple[str, str, str | None]:
             os.environ.get("OPS_GITHUB_TOKEN") or None)
 
 
+def plain(text: str) -> str:
+    """Visitor-typed text goes into a public issue: one code span, so no @mention notifies anyone and no link or image renders."""
+    return "`" + " ".join(text.replace("`", "'").split()) + "`"
+
+
 def usd(cents: int) -> str:
     return f"${cents / 100:,.2f}"
 
@@ -65,10 +70,10 @@ def issue_payload(plan_id: str, plan_hash: str, order: dict, case: dict, plan: d
 ```
 </details>
 
-**Approved by:** {order['approver']}{(' · ' + order['reason']) if order['reason'] else ''}
+**Approved by:** {plain(order['approver'])}{(' · ' + plain(order['reason'])) if order['reason'] else ''}
 **Receipt:** case `{order['case_id']}` · plan `{plan_id}` · `plan_hash` `{plan_hash}` · data version {order['data_version']} · order `{order['order_id']}`
 
-*Synthetic data. Filed by Chokepoint's Dispatcher after approval by {order['approver']}. Not a real bank instruction.*
+*Synthetic data. Filed by Chokepoint's Dispatcher after approval by {plain(order['approver'])}. Not a real bank instruction.*
 """
     return {"title": title, "body": body, "labels": [f"plan-{short}"]}
 
@@ -108,7 +113,7 @@ def _file(payload: dict, short: str) -> tuple[str, str]:
     sent = json.dumps(payload, sort_keys=True).encode()
     found = _find_issue(repo, short)
     if found:
-        return found["html_url"], hashlib.sha256(sent).hexdigest()
+        return found["html_url"], ""  # filed earlier: this process sent nothing, so there is no payload hash to record
     r = _github("POST", f"/repos/{repo}/issues", content=sent, headers={"Content-Type": "application/json"})
     if r.status_code == 422 and "labels" in r.text:  # a token without label rights: file it unlabelled; the title still carries the hash
         sent = json.dumps({k: v for k, v in payload.items() if k != "labels"}, sort_keys=True).encode()
@@ -141,8 +146,9 @@ def dispatch(tb, order_id: str, plan_id: str, plan_hash: str, order: dict, case:
                   "d.payload_hash = $ph, d.note = $n, d.sent_at = $now",
                   {"d": dp_id, "h": plan_hash, "s": status, "u": url or "", "ph": phash, "n": note, "now": int(time.time())})
     tb._write("MATCH (o:FreezeOrder {id: $o}), (d:Dispatch {id: $d}) MERGE (o)-[:DISPATCHED_AS]->(d)", {"o": order_id, "d": dp_id})
+    note = tb.g.ro_query("MATCH (d:Dispatch {id: $d}) RETURN d.note", params={"d": dp_id}).result_set[0][0] or ""
     return {"dispatch_id": dp_id, "channel": "github-issue", "status": status, "url": url or None, "payload_hash": phash,
-            "holds_placed": holds}
+            "holds_placed": holds, "note": note}
 
 
 def comment_withdrawn(url: str, who: str, reason: str) -> None:
@@ -153,6 +159,6 @@ def comment_withdrawn(url: str, who: str, reason: str) -> None:
     try:
         n = url.rstrip("/").rsplit("/", 1)[1]
         _github("POST", f"/repos/{repo}/issues/{n}/comments",
-                json={"body": f"**Withdrawn** by {who}. {reason}\n\n*Synthetic data; no bank was called.*"}).raise_for_status()
+                json={"body": f"**Withdrawn** by {plain(who)}. {plain(reason) if reason else ''}\n\n*Synthetic data; no bank was called.*"}).raise_for_status()
     except (httpx.HTTPError, IndexError) as e:
         log.warning("could not comment on the withdrawn request: %s", type(e).__name__)
