@@ -7,12 +7,12 @@ stop it?** It then checks its own plan and keeps a receipt. Everything below use
 
 **Real:** IBM's synthetic anti-money-laundering transfers (5.08 million rows, of which 4.49 million transfers are loaded after
 self-transfers are dropped; the small public demo holds only the 8 example alerts' neighbourhoods); every figure on the cards (each
-is a stored tool run); the `GRAPH.COPY` check; the `algo.maxFlow` wrong-answer repro and its certificate; `scripts/judge_check.py`;
+is a stored tool run); the `GRAPH.COPY` check, and a second check that re-expands the transfers from the source graph with the frozen accounts excluded (a different code path, the same recorded transfers; an approval is refused if the two disagree); the `algo.maxFlow` wrong-answer repro and its certificate; `scripts/judge_check.py`;
 and a flag on any figure in the model's text that no tool returned. The agent never writes Cypher: tools run fixed queries, reads go
 through `GRAPH.RO_QUERY` so the database refuses writes on that path (`tests/test_gates_db.py`), and the tools write only their own
 cases, findings, plans and receipts.
 
-**A person decides.** A checked plan can be approved by a named person in the app: the approval is recorded as a freeze order in the graph, tied to the plan, its accounts, the data version and the check by a hash, and it is refused for an unchecked plan or once newer transfers exist (`tests/test_order.py`). It is an HTTP endpoint, not a tool, so the model cannot call it, and no bank is called.
+**A person decides.** A checked plan can be approved by a named person in the app, after the form lists the checks that apply (verified, current, actionable, no routes left, the second check): the approval is recorded as a freeze order in the graph, tied to the plan, its accounts, the data version and the check by a hash, and it is refused for an unchecked plan or once newer transfers exist (`tests/test_order.py`). It is an HTTP endpoint, not a tool, so the model cannot call it, and no bank is called.
 
 **Not real:** there is no bank data, no account balances (so "Traced in" is an upper bound, not a partial freeze), and the public
 demo replays a saved agent run rather than answering new questions. The plan itself is not time-aware (only the card's timing

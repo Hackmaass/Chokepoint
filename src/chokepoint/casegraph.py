@@ -30,6 +30,15 @@ RETURN a.id AS s, b.id AS d, t.ts AS ts
 """
 
 
+# Q6: one hop of expansion on the source graph that never steps onto an excluded (frozen) account. Used by the second,
+# independent check after a freeze: it does not use the scratch graph, the copy or the region built for the plan.
+RECHECK_QUERY = """
+MATCH (a:Account)-[t:TRANSFER]->(b:Account)
+WHERE a.id IN $frontier AND NOT b.id IN $excluded AND t.ts >= $t_from AND t.ts <= $t_to AND t.batch <= $data_version
+RETURN DISTINCT b.id AS id
+"""
+
+
 class CaseTooLarge(Exception):
     code = "CASE_TOO_LARGE"
 
@@ -135,3 +144,23 @@ def time_ordered_pairs(transfers: list[tuple[str, str, int]], origin: str, t_fro
                 arrived[d] = ts
                 changed = True
     return {(s, d) for s, d, ts in transfers if s in arrived and ts >= arrived[s] and s not in removed and d not in removed}
+
+
+def reachable_targets(graph, origin: str, t_from: int, t_to: int, hops: int, data_version: int,
+                      excluded: list[str], targets: set[str]) -> set[str]:
+    """Which of ``targets`` can the money reach from ``origin`` within ``hops`` hops, never passing through ``excluded``?
+    A fresh expansion on the source graph (the same fixed query shape, a different code path from the region the plan
+    was built on), so a mistake in building that region would show up as a disagreement."""
+    seen = {origin}
+    frontier = [origin]
+    for _ in range(hops):
+        if not frontier:
+            break
+        rows = graph.ro_query(RECHECK_QUERY, timeout=QUERY_TIMEOUT_MS,
+                              params={"frontier": frontier, "excluded": excluded, "t_from": t_from, "t_to": t_to,
+                                      "data_version": data_version}).result_set
+        if len(rows) >= RESULT_CAP:
+            raise TruncatedResult(f"recheck hop returned {len(rows)} rows (cap {RESULT_CAP})")
+        frontier = [r[0] for r in rows if r[0] not in seen]
+        seen.update(frontier)
+    return seen & targets

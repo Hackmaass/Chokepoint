@@ -64,6 +64,7 @@ export type Card = {
     method: string
     perimeter_reachable_before: number
     perimeter_reachable_after: number
+    source_recheck?: { perimeter_reachable_before: number; perimeter_reachable_after: number; method: string }
   }
 }
 
@@ -270,6 +271,7 @@ export function buildCard(results: { tool: string; result: Record<string, any> }
         method: r.method,
         perimeter_reachable_before: r.perimeter_reachable_before,
         perimeter_reachable_after: r.perimeter_reachable_after,
+        source_recheck: r.source_recheck,
       }
   }
   return card

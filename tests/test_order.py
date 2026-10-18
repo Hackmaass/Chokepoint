@@ -78,3 +78,11 @@ def test_orders_go_with_the_case(tb):
     tb.order_freeze(plan["plan_id"], "A. Rao", "")
     tb.delete_case(case["case_id"])
     assert tb.g.ro_query("MATCH (o:FreezeOrder) RETURN count(o)").result_set[0][0] == 0
+
+
+def test_a_second_independent_check_on_the_source_graph_agrees(tb):
+    case = tb.call("open_case", {"account": EX["account"], "alert_ts": EX["alert_ts"]})
+    plan = tb.call("freeze_plan", {"case_id": case["case_id"]})
+    v = tb.call("verify_plan", {"plan_id": plan["plan_id"]})
+    rc = v["source_recheck"]
+    assert v["verified"] and rc["perimeter_reachable_before"] > 0 and rc["perimeter_reachable_after"] == 0

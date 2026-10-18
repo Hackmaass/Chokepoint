@@ -66,6 +66,11 @@ ok = round(before / 100) == 22410 and default[1]["chokepoint_plan"]["count"] == 
 line("PASS" if ok else "FAIL", "MEASURED  the landing page alert 021174:800737690: $22,410 could move, 3 accounts to freeze",
      f"movable ${before / 100:,.2f}, accounts {default[1]['chokepoint_plan']['count']}")
 
+# 2b. the second, independent check on the source graph (not the copy) agrees on every example
+bad = [a for a, _, v in rows if not (v["source_recheck"]["perimeter_reachable_after"] == 0 and v["source_recheck"]["perimeter_reachable_before"] > 0)]
+line("FAIL" if bad else "PASS", "MEASURED  a second check that re-expands the source graph (not the copy) agrees: nothing reaches the perimeter after the freeze, something did before",
+     f"disagree: {', '.join(bad)}" if bad else f"{len(rows)} of {len(rows)} examples agree")
+
 # 3. timing check across the examples
 no_route = smaller = same = 0
 for _, p, _ in rows:

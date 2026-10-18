@@ -193,6 +193,7 @@ def run_agent(task: str, toolbox: Toolbox, llm: LLMClient, max_steps: int = 10,
                   "summary": summarize(result), "result": result})
             model_view = {k: v for k, v in result.items() if k not in ("finding_id", "tool_call_id", "already_computed", "already_open", "data_version")}
             model_view.pop("time_ordered", None)  # card-only, like traced_in below
+            model_view.pop("source_recheck", None)
             for side in ("chokepoint_plan", "rule_of_thumb_plan"):  # card-only detail; keeps recorded replays valid
                 if side in model_view:
                     model_view[side] = {k: v for k, v in model_view[side].items() if k != "traced_in_usd_cents"}

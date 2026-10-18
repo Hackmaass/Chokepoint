@@ -111,6 +111,7 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
   const [orderReason, setOrderReason] = useState('')
   const [orderBusy, setOrderBusy] = useState(false)
   const [orderError, setOrderError] = useState('')
+  const [gate, setGate] = useState<{ check: string; passed: boolean; detail: string; blocking: boolean }[] | null>(null)
   const [alertTs, setAlertTs] = useState('')
   const [mode, setMode] = useState<Mode>('replay')
   const [server, setServer] = useState<Ready>({ ready: false, state: 'checking' })
@@ -684,7 +685,12 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
                         </p>
                       )}
                     </div>
-                    {verifiedLine && <details className="how-checked"><summary>How this was checked</summary><p className="note">{verifiedLine.method}</p></details>}
+                    {verifiedLine && <details className="how-checked"><summary>How this was checked</summary>
+                      <p className="note">{verifiedLine.method}</p>
+                      {verifiedLine.source_recheck && (
+                        <p className="note">A second check, separate from the copy: it {verifiedLine.source_recheck.method}. With nothing frozen it reached {verifiedLine.source_recheck.perimeter_reachable_before} perimeter account{verifiedLine.source_recheck.perimeter_reachable_before === 1 ? '' : 's'}; with the plan applied, {verifiedLine.source_recheck.perimeter_reachable_after}. It checks the same recorded transfers, by a different route.</p>
+                      )}
+                    </details>}
                     {plan.chokepoint.accounts.length > 0 && (
                       <ul className="acct-list" aria-label="Accounts to freeze" data-tour="plan">
                         {plan.chokepoint.accounts.map((a) => (
@@ -708,6 +714,17 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
                           <p className="note">Newer transfers exist, so this plan can no longer be approved. Re-run the affected findings first.</p>
                         ) : orderOpen ? (
                           <form className="order-form" onSubmit={(e) => { e.preventDefault(); submitOrder() }}>
+                            <ul className="gate" aria-label="Checks before approval">
+                              {(gate ?? []).map((c) => (
+                                <li key={c.check} className={c.passed ? 'ok' : 'no'}><span aria-hidden>{c.passed ? '✓' : '✕'}</span> {c.detail}</li>
+                              ))}
+                              {verifiedLine?.source_recheck && (
+                                <li className={verifiedLine.source_recheck.perimeter_reachable_after === 0 ? 'ok' : 'no'}>
+                                  <span aria-hidden>{verifiedLine.source_recheck.perimeter_reachable_after === 0 ? '✓' : '✕'}</span> the second check on the source graph reaches {verifiedLine.source_recheck.perimeter_reachable_after} perimeter accounts
+                                </li>
+                              )}
+                              {gate === null && <li className="note">Running the checks…</li>}
+                            </ul>
                             <label>Your name<input className="input" value={approver} onChange={(e) => setApprover(e.target.value)} maxLength={60} autoComplete="name" required /></label>
                             <label>Reason (optional)<input className="input" value={orderReason} onChange={(e) => setOrderReason(e.target.value)} maxLength={300} /></label>
                             <div className="order-actions">
@@ -718,7 +735,7 @@ export default function App({ autoTour = false }: { autoTour?: boolean }) {
                             {orderError && <p className="error" role="alert">{orderError}</p>}
                           </form>
                         ) : (
-                          <button className="btn small" onClick={() => setOrderOpen(true)}>{myOrders.length ? 'Approve again…' : 'Approve a freeze order…'}</button>
+                          <button className="btn small" onClick={() => { setOrderOpen(true); setGate(null); if (plan) api.tool('audit_checks', { plan_id: plan.plan_id }).then((r) => setGate(r.checks ?? null)).catch(() => setGate(null)) }}>{myOrders.length ? 'Approve again…' : 'Approve a freeze order…'}</button>
                         )}
                       </div>
                     )}

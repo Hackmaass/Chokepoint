@@ -38,6 +38,7 @@ from .casegraph import (
     TruncatedResult,
     UnknownAccount,
     extract_region,
+    reachable_targets,
     time_ordered_pairs,
     transfer_times,
 )
@@ -518,6 +519,13 @@ class Toolbox:
             "statement": (f"no route from the alerted account to the {hops}-hop perimeter is left after freezing "
                           f"{len(info['frozen'])} account(s)") if verified else
                          ("routes to the perimeter remain" if reachable_after else "no route existed before the freeze"),
+            "source_recheck": {  # card-only: kept out of the model's view so saved agent runs stay valid
+                "perimeter_reachable_before": len(reachable_targets(self.g, region.origin, region.t_from, region.t_to, hops,
+                                                                    region.data_version, [], set(perimeter))),
+                "perimeter_reachable_after": len(reachable_targets(self.g, region.origin, region.t_from, region.t_to, hops,
+                                                                   region.data_version, info["frozen"], set(perimeter))),
+                "method": "re-expanded the transfers from the source graph hop by hop with the frozen accounts excluded",
+            },
             "method": "rebuilt the region from the database at the stored data version, " + (
                 "deleted the frozen accounts from a copy of the graph (GRAPH.COPY), " if copy_method == "GRAPH.COPY"
                 else "built a second graph without the frozen accounts, ") +
@@ -790,6 +798,10 @@ class Toolbox:
         if not ver or not ver[2].get("verified"):
             raise ToolError("NOT_VERIFIED", "the plan has no passing check on a copy of the graph at the current data version",
                             "run the check first; an unchecked plan cannot be approved")
+        rc = ver[2].get("source_recheck")
+        if rc and rc.get("perimeter_reachable_after", 0) > 0:
+            raise ToolError("SOURCE_RECHECK_DISAGREES", "the second check on the source graph still reaches the perimeter",
+                            "do not approve: the two checks disagree")
         if not info["frozen"]:
             raise ToolError("NOTHING_TO_FREEZE", "this plan freezes no accounts")
         plan_hash = hashlib.sha256(json.dumps(

@@ -211,6 +211,8 @@ async function open(viewport, intercept) {
   await page.getByRole('button', { name: /Run the example alert/ }).click()
   await page.waitForSelector('.chip.good', { timeout: 30000 })
   await page.getByRole('button', { name: /Approve a freeze order/ }).click()
+  await page.waitForSelector('.gate li.ok', { timeout: 10000 })
+  check((await page.locator('.gate li.ok').count()) >= 4 && (await page.locator('.gate li.no').count()) === 0, 'approval: the checks before approval are listed and passing, including the second check on the source graph')
   check(await page.getByRole('button', { name: 'Record freeze order' }).isDisabled(), 'approval: the order cannot be recorded without a name')
   await page.getByLabel('Your name').fill('Asha Verma')
   await page.getByRole('button', { name: 'Record freeze order' }).click()
