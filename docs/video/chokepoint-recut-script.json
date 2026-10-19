@@ -1,0 +1,63 @@
+{
+  "id": "chokepoint-demo-v3",
+  "voice": "en-US-AndrewNeural",
+  "base_rate": "+4%",
+  "beats": [
+    { "key": "problem", "segments": [
+      { "say": "A scam victim's money lands in a mule account.", "rate": "-4%", "pitch": "-2Hz", "pause_ms": 380 },
+      { "say": "Within minutes, it is moving on through other accounts.", "pause_ms": 420 },
+      { "say": "The question for an investigator: which few accounts do you freeze, without locking out everyone else?", "rate": "+2%" }
+    ]},
+    { "key": "agent", "segments": [
+      { "say": "Chokepoint is an investigation agent on Falkor D B.", "pause_ms": 260 },
+      { "say": "It opens a case from an alert, works out what could still move, and builds a freeze plan.", "pause_ms": 260 },
+      { "say": "The model chooses the tools. It never writes a query, and every number on the cards comes from a tool." }
+    ]},
+    { "key": "plan", "segments": [
+      { "say": "For this alert, up to twenty-two thousand dollars could still reach accounts three hops away.", "rate": "+0%", "pause_ms": 320 },
+      { "say": "That is a ceiling taken from past transfers, not a forecast.", "rate": "+0%", "pause_ms": 380 },
+      { "say": "Freezing these three accounts cuts every route.", "rate": "-4%", "pitch": "-1Hz" }
+    ]},
+    { "key": "verify", "segments": [
+      { "say": "Then it checks.", "pause_ms": 340 },
+      { "say": "It deletes those accounts from a copy of the graph, and searches again for a route. None is left.", "pause_ms": 300 },
+      { "say": "A second check re-reads the source graph, and has to agree.", "pause_ms": 300 },
+      { "say": "It is a consistency check on the same data, and the card says so.", "rate": "+0%" }
+    ]},
+    { "key": "repair", "segments": [
+      { "say": "The plan comes from a max flow inside Falkor D B.", "pause_ms": 300 },
+      { "say": "While building this, we found that Falkor D B's max flow is sometimes wrong.", "pause_ms": 520 },
+      { "say": "On this small network it answers three hundred. The true answer is four hundred fifty-three.", "rate": "-3%", "pause_ms": 520 },
+      { "say": "So no answer is trusted until it is proven.", "pause_ms": 300 },
+      { "say": "When the proof fails, the flow is repaired inside Falkor D B, and proven again.", "rate": "+0%" }
+    ]},
+    { "key": "compare", "segments": [
+      { "say": "Against the usual rule of thumb, freezing whoever the account paid most recently, this plan blocks about the same share of escaped money.", "pause_ms": 340 },
+      { "say": "I am not claiming more. This example was picked because the rule leaves money movable; the typical result is a tie.", "rate": "+0%", "pause_ms": 520 },
+      { "say": "What the plan adds is a guarantee. That rule needs more accounts to leave no route in sixty-four percent of cases.", "rate": "+0%", "pause_ms": 300 },
+      { "say": "And its picks are more precise." }
+    ]},
+    { "key": "approve", "segments": [
+      { "say": "A person approves, not the agent.", "rate": "+0%", "pause_ms": 320 },
+      { "say": "The order is recorded in the graph, tied to the checked plan by a hash.", "pause_ms": 380 },
+      { "say": "Then Chokepoint acts. Holds are placed on the accounts, and a freeze request is filed, with the exact queries and both checks attached.", "pause_ms": 340 },
+      { "say": "In this recording, GitHub is a local stand-in. No bank is called.", "rate": "+0%" }
+    ]},
+    { "key": "receipt", "segments": [
+      { "say": "Every answer has a receipt, and the receipts are chained.", "pause_ms": 300 },
+      { "say": "This button recomputes every hash, here in the browser. Change one stored value, and the check fails at that record.", "pause_ms": 340 },
+      { "say": "Cases persist, so an investigation can be resumed later." }
+    ]},
+    { "key": "mcp", "segments": [
+      { "say": "It is not locked inside this screen. Any M C P client can connect to the same nine tools.", "pause_ms": 360 },
+      { "say": "There is no tool to approve or dispatch. Only a person can.", "rate": "+0%" }
+    ]},
+    { "key": "close", "segments": [
+      { "say": "Synthetic data. Honest numbers. Everything checkable.", "rate": "-2%", "pause_ms": 640 },
+      { "say": "Chokepoint: which accounts do you freeze, and can you prove it?", "rate": "-6%", "pitch": "-1Hz" }
+    ]}
+  ],
+  "captions": {
+    "Falkor D B": "FalkorDB", "M C P": "MCP", "max flow": "max-flow"
+  }
+}

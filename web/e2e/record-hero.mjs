@@ -15,7 +15,7 @@ const mock = createServer((req, res) => {
   req.on('end', () => {
     res.setHeader('Content-Type', 'application/json')
     if (req.method === 'GET') return res.end(JSON.stringify(issues))
-    issues.push({ title: JSON.parse(b).title, html_url: `https://github.com/Hackmaass/chokepoint-ops/issues/${issues.length + 1}` })
+    issues.push({ title: JSON.parse(b).title, html_url: `http://127.0.0.1:9101/local-standin/issues/${issues.length + 1}` })
     res.statusCode = 201
     res.end(JSON.stringify(issues.at(-1)))
   })
