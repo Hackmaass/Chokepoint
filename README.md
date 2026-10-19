@@ -6,7 +6,7 @@ Built for [Graph Hacks: Context for AI Agents](https://www.wemakedevs.org/hackat
 
 > Live demo: **<https://chokepoint-uou2.onrender.com/>** (a free host: the first load after idle can take about a minute) · Demo video: **<https://youtu.be/St6muXDuDKo>** (recut, Oct 19, with the late-window additions: [`docs/video/`](docs/video/README.md)) · Blog post: **<https://dev.to/omkar_rane_bfa9ae9e3651f0/which-mule-accounts-do-you-freeze-a-checked-minimum-cut-on-a-449-million-transfer-falkordb-graph-2afg>**
 
-[![ci](https://github.com/Hackmaass/Chokepoint/actions/workflows/ci.yml/badge.svg)](https://github.com/Hackmaass/Chokepoint/actions/workflows/ci.yml) [![claims](https://github.com/Hackmaass/Chokepoint/actions/workflows/claims.yml/badge.svg)](https://github.com/Hackmaass/Chokepoint/actions/workflows/claims.yml) ![data](https://img.shields.io/badge/data-synthetic-informational) ![license](https://img.shields.io/badge/license-MIT-blue) ![FalkorDB](https://img.shields.io/badge/FalkorDB-v4.22.0-orange)
+[![ci](https://github.com/Hackmaass/Chokepoint/actions/workflows/ci.yml/badge.svg)](https://github.com/Hackmaass/Chokepoint/actions/workflows/ci.yml) [![claims](https://github.com/Hackmaass/Chokepoint/actions/workflows/claims.yml/badge.svg)](https://github.com/Hackmaass/Chokepoint/actions/workflows/claims.yml) ![data](https://img.shields.io/badge/data-synthetic-informational) ![license](https://img.shields.io/badge/license-MIT-blue) ![FalkorDB](https://img.shields.io/badge/FalkorDB-v4.22.0-orange) ![MCP](https://img.shields.io/badge/MCP-streamable%20HTTP-6b46c1) ![Python](https://img.shields.io/badge/python-3.12-3776ab) ![React](https://img.shields.io/badge/UI-React%20%2B%20Vite-61dafb) ![AI](https://img.shields.io/badge/built%20with-Claude%20Code%20(disclosed)-d97757)
 
 ![Chokepoint: alert, live-checked plan, cut on the map, approval, dispatched freeze request, receipt chain verified](web/public/hero.gif)
 
@@ -45,6 +45,10 @@ graph LR
   O -- DISPATCHED_AS --> D[Dispatch]
   O -- "FOR_ACCOUNT, hold" --> A1
 ```
+
+<p align="center"><img src="docs/media/falkordb-browser-chain.webp" alt="FalkorDB Browser showing one case: its tool runs, findings, the freeze plan, the order and the dispatch as a connected graph, with label counts and property keys in the left panel" width="900"></p>
+
+*FalkorDB Browser (the pinned image's own UI) on a throwaway copy of the small public build's slice, after one example alert was run and approved. One `Case`, its `ToolCall`s and `Finding`s, the `FreezePlan`, the `FreezeOrder` and the `Dispatch`, read back with one Cypher path query. The left panel is the database's own count of labels, relationships and property keys (including `hash` and `hold`). Synthetic data; no real issue was filed.*
 
 **What FalkorDB does for it, each step checkable:** per-hop traversals build the region of an alert; `algo.maxFlow` solves the cut and a failed answer is repaired in the database (`shortestPath` + `algo.BFS`); `GRAPH.COPY` plus `shortestPath` checks the plan; the receipts, holds and dispatches are the graph itself.
 
@@ -93,6 +97,7 @@ The on-time submission is the tag [`graphhacks-ontime-submission`](https://githu
 - **Receipts are hash-chained** (`src/chokepoint/chain.py`): every ToolCall, Finding, FreezePlan, FreezeOrder and Dispatch stores `hash = sha256(canon + "|" + parent_hash)`; the Receipt tab's **Verify chain** button re-hashes them in the browser with WebCrypto (the server sends the exact text it hashed, so nothing is re-serialised), and the ops issue carries the order's chain hash. `tests/test_chain.py` changes one stored finding (or order) and the check fails at that record. Records written before this change are reported as unchained, not as broken. This detects edits to stored receipts; it is not a signature (anyone with write access to the database could rebuild the chain).
 - **Claims that check themselves** (`claims.json`, `scripts/check_claims.py`, `.github/workflows/claims.yml`): the headline numbers in this README, `docs/for-judges.md` and the landing page are marked and compared with `claims.json` in CI, so editing one by hand turns the badge red (`tests/test_claims.py`). Recorded numbers must appear in their evidence file (`docs/pilot-results.md`, `docs/guarantee-and-latency.md`); measured ones are re-derived against the database by `uv run python scripts/judge_check.py --claims`. CI has no dataset, so it cannot recompute the held-out figures: they stay labelled RECORDED.
 - **Public MCP endpoint** (`/mcp`, streamable HTTP, same nine tools; `src/chokepoint/api.py`, footer popup "Connect your agent (MCP)" in the app): `claude mcp add --transport http chokepoint https://<host>/mcp`. No approve or dispatch tool exists on it (tests: `tests/test_mcp_http.py` lists the tools over HTTP and runs open_case, freeze_plan, verify_plan). It shares the tool rate limit; there are no per-visitor tokens because `/api/tools` is already open to the same visitors, so a token would add no protection.
+- **README screenshots and FalkorDB Browser views** (`docs/media/`, `web/e2e/capture-media.mjs`): the app's answer, compare, approval, dispatched, receipt-chain and MCP screens, and three FalkorDB Browser views (the receipt chain as a graph with the database's own label counts, the held accounts as a graph and as a table), taken on a throwaway database holding the small public build's slice; badges and a flow diagram.
 - **Graph map and a one-command tour** (organizers' submission tips: map the graph, show it doing the work): the data model section now draws the stored graph and the scratch graphs from the actual `CREATE` statements, and `scripts/graph_tour.py` prints what FalkorDB holds and computed and cleans up after itself (`tests/test_graph_tour.py`).
 - **Max-flow repaired inside FalkorDB** (`src/chokepoint/algo/residual.py`, `solve` in `algo/cut.py`): a failed certificate no longer falls back to NetworkX; Edmonds-Karp runs on a residual scratch graph in FalkorDB. The 11-edge repro: first pass <!--claim:repro_first_pass-->300<!--/claim-->, certificate fails, repair <!--claim:repro_true-->453<!--/claim-->, label `falkordb+repair`. 300+ new random node-split networks match the exact oracle with 0 `networkx-emergency` (`tests/test_cut_oracle.py`, a new seed range, not the held-out set). The route checks in `toolbox.py` use `algo.BFS` instead of NetworkX. Plans for the 8 examples are unchanged; median open-case-to-verified-plan time on the 8 examples went 0.34 s to 0.36 s (measured side by side on the same machine).
 - **Dispatcher** (`src/chokepoint/dispatch.py`): after a named person approves a verified plan, holds are placed on the frozen accounts in the graph and one freeze request is filed as a GitHub issue in a public ops repo (synthetic data, no bank is called). One issue per plan hash; if GitHub is unreachable or no token is set the dispatch stays `queued` and the UI says so. An order can be withdrawn by a named person, which lifts the holds. It is not a tool, not in MCP, and the model cannot reach it (tests assert this).
@@ -101,11 +106,46 @@ The on-time submission is the tag [`graphhacks-ontime-submission`](https://githu
 - **Keep-warm ping** (`.github/workflows/keepwarm.yml`): pings the free host's `/api/health` every 10 minutes (scheduled workflows run from `main`, where this now is), so a judge does not hit the one-minute cold start; GitHub may delay or skip scheduled runs, so this is best effort.
 - **FalkorDB `algo.maxFlow` repro**: `scripts/falkordb_maxflow_repro.py`, re-checked on `v4.22.0`, `latest` (60002) and `edge`: all still return <!--claim:repro_first_pass-->300<!--/claim--> where the true maximum is <!--claim:repro_true-->453<!--/claim-->. Issue text: `docs/falkordb-issue-final.md` (not yet filed).
 
+## Screenshots
+
+*All from the running app (Replay mode, default example alert, synthetic data) and from FalkorDB Browser. Regenerate with `web/e2e/capture-media.mjs`.*
+
+<table>
+<tr>
+<td width="50%"><img src="docs/media/app-result.webp" alt="The result: $22,410 could still reach the perimeter, freeze 3 accounts, verified, the routes on the map" width="100%"><br><sub><b>The answer first.</b> A ceiling of $22,410 from past transfers, 3 accounts to freeze, verified on a copy of the graph, $0 left after the freeze, and every route on the map.</sub></td>
+<td width="50%"><img src="docs/media/app-compare.webp" alt="The Compare tab: the plan against the same-size rule of thumb" width="100%"><br><sub><b>Against the rule of thumb.</b> Same number of accounts: money still able to move $0 against $19,332.59 here. This example was picked for that; on the held-out half the blocked share is a tie.</sub></td>
+</tr>
+<tr>
+<td><img src="docs/media/app-approve.webp" alt="The approval form with the checks before approval, all passing" width="100%"><br><sub><b>A person approves.</b> The checks are listed first; the model cannot approve.</sub></td>
+<td><img src="docs/media/app-dispatched.webp" alt="The order recorded and Dispatched, 3 holds placed" width="100%"><br><sub><b>Then Chokepoint acts.</b> Holds in the graph and one freeze request. In this capture the request went to a local stand-in for GitHub.</sub></td>
+</tr>
+<tr>
+<td><img src="docs/media/app-chain.webp" alt="The Receipt tab after Verify chain: receipt records re-hashed in the browser, every link matches" width="100%"><br><sub><b>Receipts are hash-chained.</b> The button re-hashes every record in the browser.</sub></td>
+<td><img src="docs/media/app-mcp.webp" alt="The Connect your agent popup with the MCP command and JSON config" width="100%"><br><sub><b>Bring your own agent.</b> The same nine tools over MCP; no approve or dispatch tool. (Local run, so the address is 127.0.0.1.)</sub></td>
+</tr>
+<tr>
+<td><img src="docs/media/falkordb-browser-holds.webp" alt="FalkorDB Browser: one FreezeOrder node linked to the three held accounts" width="100%"><br><sub><b>In FalkorDB.</b> The approved order and the three accounts it holds, as a graph.</sub></td>
+<td><img src="docs/media/falkordb-browser-holds-table.webp" alt="FalkorDB Browser table view: the held accounts, the order that holds them and the time" width="100%"><br><sub><b>Same data as a table.</b> <code>MATCH (a:Account) WHERE a.hold IS NOT NULL RETURN ...</code></sub></td>
+</tr>
+</table>
+
 ## The problem
 
 When a scam victim's money lands in a mule account it is usually moved on within minutes, through chains of other accounts. An investigator who gets the alert has to decide, fast: where can the money still go, which few accounts do we freeze to stop it, and what does that cost innocent customers? Looking at one account at a time does not answer that. The answer depends on how accounts connect.
 
 ## What it does
+
+```mermaid
+flowchart LR
+  A["Alert on a mule account"] --> B["Region: per-hop traversals in FalkorDB"]
+  B --> C["Cheapest account cut: max-flow, certified, repaired in FalkorDB"]
+  C --> D["Check on a GRAPH.COPY, then on the source graph"]
+  D --> E{"A named person approves?"}
+  E -- yes --> F["Holds in the graph and a freeze request"]
+  E -- no --> G["Nothing happens"]
+  F --> H["Hash-chained receipts, resumable, re-checkable"]
+```
+
 
 Given an alerted account and an alert time, the agent:
 
