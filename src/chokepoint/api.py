@@ -21,7 +21,6 @@ The server must run as ONE uvicorn worker: agent runs and their event streams li
 from __future__ import annotations
 
 import asyncio
-import functools
 import json
 import logging
 import mimetypes
@@ -120,9 +119,11 @@ def toolbox() -> Toolbox:
     return tb
 
 
-@functools.cache
+_live_rejected = threading.Event()  # the provider refused the key (HTTP 401/403): stop offering live mode until a restart
+
+
 def live_available() -> bool:
-    return bool(get_settings().llm_api_key)
+    return bool(get_settings().llm_api_key) and not _live_rejected.is_set()
 
 
 class RateLimiter:
@@ -431,6 +432,9 @@ def _execute(run_id: str, st: dict, req: RunRequest) -> None:
         llm = LLMClient(mode=mode, cache_dir=REPLAY_DIR if mode == "replay" else None, attempts=LIVE_ATTEMPTS)
         extra = {"system": AUDITOR_PROMPT, "specs": AUDITOR_SPECS} if req.role == "auditor" else {}
         run = run_agent(req.task, toolbox(), llm, on_event=on_event, **extra)
+        if run.stopped == "llm_error" and any(e["type"] == "error" and re.search(r"HTTP 40[13]", e.get("message", "")) for e in run.events):
+            _live_rejected.set()
+            log.warning("run=%s the model provider rejected the key; live mode is no longer offered until a restart", run_id)
         if run.stopped == "llm_error" and mode == "live" and req.role == "investigator" and EXAMPLE_TASK.fullmatch(req.task):
             # the provider is rate-limited or down: say so, then play the saved run for this example alert instead
             st["events"].append({"type": "fallback", "t": time.time(),

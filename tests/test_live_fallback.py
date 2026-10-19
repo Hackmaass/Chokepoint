@@ -17,7 +17,7 @@ EX = json.loads((PROJECT_ROOT / "examples" / "examples.json").read_text(encoding
 
 
 @pytest.fixture()
-def rate_limited(monkeypatch):
+def rate_limited(monkeypatch, status=429):
     if "tenant_ibm" not in connect().list_graphs():
         pytest.skip("tenant_ibm not loaded")
     monkeypatch.setenv("LLM_API_KEY", "test-key")
@@ -26,7 +26,7 @@ def rate_limited(monkeypatch):
 
     def init(self, *a, **kw):
         real(self, *a, **kw)
-        self._client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(429, text="slow down")))
+        self._client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(status, text="slow down")))
 
     monkeypatch.setattr(llm_mod.LLMClient, "__init__", init)
 
@@ -50,3 +50,13 @@ def test_a_custom_question_has_no_recorded_run_so_it_reports_the_failure(rate_li
     events = run(f"Account {EX['account']} was alerted at {EX['alert_ts']}. What if I can only freeze 2 accounts?")
     assert "fallback" not in [e["type"] for e in events]
     assert events[-1]["type"] == "card" and events[-1]["stopped"] == "llm_error" and events[-1]["mode"] == "live"
+
+
+def test_a_rejected_key_stops_live_mode_from_being_offered(rate_limited, monkeypatch):
+    monkeypatch.setattr(llm_mod.LLMClient, "_post", lambda self, body: (_ for _ in ()).throw(llm_mod.LLMError('LLM HTTP 403: {"detail":"Authorization failed"}')))
+    api._live_rejected.clear()
+    assert api.live_available()
+    events = run(f"Account {EX['account']} was alerted at {EX['alert_ts']}. Investigate and recommend which accounts to freeze.")
+    assert any(e["type"] == "fallback" for e in events) and events[-1]["mode"] == "replay"  # this alert still gets its saved run
+    assert not api.live_available()  # and the health probe now says live is off, so the UI stops defaulting to it
+    api._live_rejected.clear()

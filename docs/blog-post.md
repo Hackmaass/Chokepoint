@@ -9,9 +9,11 @@ After a scam alert lands on a mule account, "is this account bad" is already ans
 
 That is a question about how accounts connect, so I built Chokepoint for Graph Hacks on FalkorDB. It runs on IBM's synthetic anti-money-laundering transfers: 5.08 million rows, 4.49 million loaded once self-transfers are dropped. Each case pulls a small region out of that graph (tens to a few thousand accounts), and the cut runs on the region. This post covers how the cut works, a FalkorDB defect I found while building it, and a held-out result I would have preferred to write differently.
 
-Code: https://github.com/Hackmaass/Chokepoint · Live demo: https://chokepoint-uou2.onrender.com
+Code: https://github.com/Hackmaass/Chokepoint · Live demo: https://chokepoint-uou2.onrender.com · Video: https://youtu.be/St6muXDuDKo
 
 The short version: the plan blocks about the same share of escaped laundering money as a simple rule of thumb, but it is more precise and it comes with a check. Every plan is checked twice, a person approves it, and an approval cannot outlive its evidence. Along the way I found a case where FalkorDB's `algo.maxFlow` returns the wrong answer, and one command now re-measures every number in this post.
+
+*Updated Oct 19, during the late-submission window: three sentences below changed (marked "updated") and there is a new section at the end, "What changed after the deadline".*
 
 ![The decision card](https://raw.githubusercontent.com/Hackmaass/Chokepoint/main/web/public/shots/s3-plan.webp)
 
@@ -47,7 +49,7 @@ It returns a flow value and edge flows, not a cut. I read the cut off the residu
 
 My assistant wrote a NetworkX oracle to check this against, and in the first hours it disagreed with FalkorDB on a surprising share of random networks. Not on plain random graphs: I ran 260 trials of those, cyclic and acyclic, with assorted capacities, and got zero mismatches. Only on node-split networks.
 
-On those, `algo.maxFlow` sometimes returned a value below the true maximum, and the flows it returned broke conservation, so they were not even a valid flow. Across two batches that was 12 to 17% of the networks I generated (24 of about 140 earlier, then 14 of 120 on a later batch). Both v4.22.0 and 6.0.2 did it. Changing the "infinite" capacity did not change the wrong answer.
+On those, `algo.maxFlow` sometimes returned a value below the true maximum, and the flows it returned broke conservation, so they were not even a valid flow. Across two batches that was 12 to 17% of the networks I generated (24 of about 140 earlier, then 14 of 120 on a later batch). Both v4.22.0 and 6.0.2 did it, and when I re-checked on Oct 19 the latest and edge images still did (updated). Changing the "infinite" capacity did not change the wrong answer.
 
 I shrank a failing case until it had 11 edges. The source reaches the sink by paths of different lengths, the longest being 7 edges:
 
@@ -64,7 +66,7 @@ NetworkX says the maximum is 453: 300 through `a20` and 153 through `a3` then `a
 
 The second annoyance was a hang: one network sent `algo.maxFlow` into a run that ignored the per-query timeout until the server default (3 seconds, which I set short) cancelled it cleanly.
 
-A defect report is not an attack. `algo.maxFlow` was right on every one of the eight real example networks, and every plan I show used its answer. But I could not ship something that is wrong 12 to 17% of the time on the shape I need, so FalkorDB's result is used only with a certificate: the flow has to be feasible (capacities respected, flow conserved), and no sink may be reachable in the residual graph, which by max-flow/min-cut duality means the flow is maximal. Anything else, whether wrong, errored, empty or timed out, goes to an exact NetworkX solve, and the plan records which solver produced it.
+A defect report is not an attack. `algo.maxFlow` was right on every one of the eight real example networks, and every plan I show used its answer. But I could not ship something that is wrong 12 to 17% of the time on the shape I need, so FalkorDB's result is used only with a certificate: the flow has to be feasible (capacities respected, flow conserved), and no sink may be reachable in the residual graph, which by max-flow/min-cut duality means the flow is maximal. Anything else, whether wrong, errored, empty or timed out, is repaired inside FalkorDB and certified again (updated Oct 19: it used to go to an exact NetworkX solve; NetworkX is now only the test oracle and a counted emergency path), and the plan records which solver produced it.
 
 On 40 random networks the script reports 22 accepted, 6 rejected and 12 where FalkorDB gave no usable answer. The raw value differed from exact on 5 of the 40. Zero false accepts there, and zero on a separate batch of 120. The 11-edge repro and a draft bug report are in the repository, with a strict `xfail` test that will tell me when it is fixed. It is still a draft; I have not filed it.
 
@@ -120,7 +122,7 @@ On the 8 example alerts, 3 have no time-ordered route to the perimeter at all, 2
 
 A checked plan can be approved by a named person, and the form lists the checks that apply before a name can be recorded: verified, current, actionable, no routes left, and the second check. The approval is written into the graph as a freeze order, bound to the plan, its accounts, the data version and the check by a SHA-256 hash.
 
-The rule I care about is that an approval cannot outlive its evidence. It is refused for a plan that was not checked (`NOT_VERIFIED`), refused once newer transfers exist, and refused if the two checks disagree. It is an HTTP endpoint, not an agent tool, so the model cannot call it. No bank is called either; a person would send the order on.
+The rule I care about is that an approval cannot outlive its evidence. It is refused for a plan that was not checked (`NOT_VERIFIED`), refused once newer transfers exist, and refused if the two checks disagree. It is an HTTP endpoint, not an agent tool, so the model cannot call it. No bank is called either. (Updated Oct 19: after an approval, Chokepoint now places holds on the frozen accounts in the graph and files one freeze request, on synthetic data. Details at the end.)
 
 ![A receipt: the finding, the tool run that produced it, its parameters, the data version and the accounts it read](https://raw.githubusercontent.com/Hackmaass/Chokepoint/main/web/public/shots/s5-receipt.webp)
 
@@ -144,12 +146,28 @@ It re-checks the eight plans, the second check, the timing check, the 11-edge re
 
 ## What I am not claiming
 
-The data is synthetic. It has no balances, so there are no partial freezes, and "traced in" is an upper bound rather than a share of anything. The plan is static; only the card's check is time-aware. Nothing here promises anything for real data. The public demo replays a saved agent run rather than answering new questions.
+The data is synthetic. It has no balances, so there are no partial freezes, and "traced in" is an upper bound rather than a share of anything. The plan is static; only the card's check is time-aware. Nothing here promises anything for real data. The public demo replays saved agent runs for the 8 example alerts. The code also answers typed questions live when the host has a working model key; on the demo host the key is currently rejected by the provider, so it stays on the replays.
 
-An AI coding assistant, Claude Code, wrote most of the code and docs under my direction; [docs/ai-work-log.md](https://github.com/Hackmaass/Chokepoint/blob/main/docs/ai-work-log.md) lists what it did and what I have reviewed. The agent inside the product is a free NVIDIA Nemotron model. It chooses tools and writes a short summary, and every figure on a card comes from a tool, never the model. That separation exists because the model slipped: across 120 evaluated runs one summary quoted a dollar figure no tool had returned, and the interface now flags that.
+An AI coding assistant, Claude Code, wrote most of the code and docs under my direction; [docs/ai-work-log.md](https://github.com/Hackmaass/Chokepoint/blob/main/docs/ai-work-log.md) lists what it did and the review status of each part. The agent inside the product is a free NVIDIA Nemotron model. It chooses tools and writes a short summary, and every figure on a card comes from a tool, never the model. That separation exists because the model slipped: across 120 evaluated runs one summary quoted a dollar figure no tool had returned, and the interface now flags that.
+
+## What changed after the deadline
+
+The hackathon opened a late-submission window, and I used it. The on-time version is the tag `graphhacks-ontime-submission` in the repo; everything below is listed in the README under "Changes after the Oct 18 deadline".
+
+**The wrong answer is now repaired inside FalkorDB.** When the certificate fails, a residual graph is built in FalkorDB, `shortestPath` finds each augmenting path, and `algo.BFS` reads the cut. On the 11-edge repro the first pass says 300, the certificate fails, the repair says 453, and the plan records `falkordb+repair`. On 300+ new random networks (a new seed range, not the held-out set) the result matched the exact oracle every time, with zero fallbacks to NetworkX. The route checks use `algo.BFS` too, so NetworkX is only a test oracle now. I measured the cost: the median from alert to verified plan on the 8 examples went from 0.34 s to 0.36 s. I still have not filed the bug upstream; the one-command repro (`scripts/falkordb_maxflow_repro.py`) and the issue text are ready.
+
+**The agent now acts, after a person approves.** The Dispatcher places holds on the frozen accounts in the graph and files one freeze request as a GitHub issue, with the exact queries and both checks attached. It is idempotent (one issue per plan hash), it is not a tool and not in MCP, and if GitHub is unreachable or there is no token it says "Queued, not sent" instead of pretending. It is synthetic data and no bank is called. On the demo host it stays queued until the ops repo and its token are set up.
+
+**Receipts are hash-chained.** Each tool run, finding, plan, order and dispatch stores a hash of its content and its parent's hash, and the Receipt tab re-hashes the chain in your browser. Change one stored value and the check fails at that record. That detects edits; it is not a signature.
+
+**The tools are public over MCP** at `/mcp`: the same nine tools, rate-limited, and no tool to approve or dispatch.
+
+**One more result that did not go my way.** I wrote a protocol first (`docs/replay-protocol.md`) for replaying the 48 hours after each alert and counting what each plan holds and what crosses the perimeter. Then I ran it once. In 6 of the 8 examples no recorded transfer leaves the alerted account's network after the alert, and in the other two nothing crosses under either plan: a tie at $0. It stays in the app as a visualisation, labelled recorded data, not a forecast.
+
+Every headline number in the README now sits in a `claims.json` that CI checks, so editing one by hand turns the build red. I also recut the demo video with an AI voice; it is in the repo under `docs/video/`, and the filed-request step in it runs against a local stand-in for GitHub, which the video says.
 
 ## Try it
 
 - Live demo: https://chokepoint-uou2.onrender.com (replays saved runs and runs the tools on the 8 example alerts; a free host, so the first load can take a minute)
 - Repository: https://github.com/Hackmaass/Chokepoint
-- Video: https://REPLACE-WITH-VIDEO-URL
+- Video: https://youtu.be/St6muXDuDKo
