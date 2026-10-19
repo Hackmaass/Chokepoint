@@ -28,6 +28,61 @@ Built for [Graph Hacks: Context for AI Agents](https://www.wemakedevs.org/hackat
 - **Run it in two minutes, no dataset download:** `docker build -f Dockerfile.hosted -t chokepoint-hosted . && docker run -p 7860:7860 chokepoint-hosted`, then open <http://localhost:7860/>. It holds a 4,453-transfer slice with the neighbourhoods of the 8 example alerts (about 100 MB of memory); any other account needs the full stack below.
 - **The pages:** `/` is a short landing page; `#/app` is the app, with a one-minute guided tour (the **Tour** button). The example alerts replay saved agent runs (no model key needed); when the host has a key the live agent is the default and takes typed questions.
 
+## The graph, at a glance, and proof that it does the work
+
+**What is in FalkorDB.** Transfers between accounts, and everything the agent concludes about them, stored as nodes you can traverse (full data model with every property further down):
+
+```mermaid
+graph LR
+  A1((Account)) -- "TRANSFER (4.49M)" --> A2((Account))
+  C[Case] -- HAS --> F[Finding]
+  TC[ToolCall] -- "RUN_IN" --> C
+  TC -- PRODUCED --> F
+  TC -- "READ: the accounts it looked at" --> A1
+  F -- HAS_PLAN --> P[FreezePlan]
+  P -- FREEZES --> A1
+  P -- ORDERED_AS --> O[FreezeOrder]
+  O -- DISPATCHED_AS --> D[Dispatch]
+  O -- "FOR_ACCOUNT, hold" --> A1
+```
+
+**What FalkorDB does for it, each step checkable:** per-hop traversals build the region of an alert; `algo.maxFlow` solves the cut and a failed answer is repaired in the database (`shortestPath` + `algo.BFS`); `GRAPH.COPY` plus `shortestPath` checks the plan; the receipts, holds and dispatches are the graph itself.
+
+**Watch it do the work, in one command** (no key, no model; it removes its own case afterwards):
+
+```bash
+docker exec chokepoint-api python scripts/graph_tour.py     # or: uv run python scripts/graph_tour.py
+```
+
+<details><summary>What it prints (one real run on the full dataset)</summary>
+
+```text
+1. What FalkorDB holds (graph tenant_ibm)
+   accounts: 422,734   transfers: 4,487,133
+
+2. One alert, read from the graph hop by hop: 21 accounts in the region, 20 transfer pairs, 9 on the perimeter
+   freeze plan: 3 accounts, cost 300, solver recorded: falkordb
+
+3. The check on a copy of the graph (GRAPH.COPY, delete the frozen accounts, shortestPath again)
+   perimeter accounts reachable before: 9   after: 0   verified: True
+   second check on the source graph:    before 9   after 0
+
+4. FalkorDB's max-flow on the 11-edge network that it gets wrong, through the certify-and-repair path
+   algo.maxFlow first pass: 300   certificate passes: False
+   after the certificate and the in-database repair: 453   solver label: falkordb+repair   certified: True
+
+5. The receipt chain, read back with one Cypher path query:
+   MATCH (:Case {id: $c})<-[:RUN_IN]-(tc:ToolCall)-[:PRODUCED]->(f:Finding)-[:HAS_PLAN]->(p:FreezePlan)-[:ORDERED_AS]->(o:FreezeOrder)-[:DISPATCHED_AS]->(d:Dispatch)
+   RETURN tc.tool, tc.solver, f.kind, p.id, o.id, d.status
+   -> ToolCall freeze_plan (solver falkordb) -> Finding freeze_plan -> FreezePlan p-5c3d4cbb -> FreezeOrder fo-fda7cc93 -> Dispatch queued
+   solver labels stored on this case's ToolCall nodes: flow=falkordb, open_case=falkordb-cypher, verify_plan=falkordb-shortestPath, freeze_plan=falkordb
+   holds placed in the graph by the approval: 3   freeze request: queued (no token here, so it is queued, never sent)
+
+6. Cleanup: the case, its hold and its dispatch were removed
+   scratch graphs left behind: 0
+```
+</details>
+
 ## Changes after the Oct 18 deadline (late-submission window)
 
 The on-time submission is the tag [`graphhacks-ontime-submission`](https://github.com/Hackmaass/Chokepoint/releases/tag/graphhacks-ontime-submission) (commit `42465d7`, Oct 18 2026, 22:51 IST). Everything below was added afterwards on the `late-window` branch and is listed here so nothing is hidden; `git log graphhacks-ontime-submission..late-window` shows the exact commits.
