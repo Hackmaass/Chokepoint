@@ -4,7 +4,7 @@
 
 Built for [Graph Hacks: Context for AI Agents](https://www.wemakedevs.org/hackathons/falkordb) (WeMakeDevs x FalkorDB, Oct 15-18 2026). **Tracks: 1, Agents that act on connected data (primary), and 2, Agent memory and coordination.** Solo entry.
 
-> Live demo: **<https://chokepoint-uou2.onrender.com/>** (a free host: the first load after idle can take about a minute) · Demo video: **<https://youtu.be/St6muXDuDKo>** · Blog post: **<https://dev.to/omkar_rane_bfa9ae9e3651f0/which-mule-accounts-do-you-freeze-a-checked-minimum-cut-on-a-449-million-transfer-falkordb-graph-2afg>**
+> Live demo: **<https://chokepoint-uou2.onrender.com/>** (a free host: the first load after idle can take about a minute) · Demo video: **<https://youtu.be/St6muXDuDKo>** (recut, Oct 19, with the late-window additions: [`docs/video/`](docs/video/README.md)) · Blog post: **<https://dev.to/omkar_rane_bfa9ae9e3651f0/which-mule-accounts-do-you-freeze-a-checked-minimum-cut-on-a-449-million-transfer-falkordb-graph-2afg>**
 
 [![ci](https://github.com/Hackmaass/Chokepoint/actions/workflows/ci.yml/badge.svg)](https://github.com/Hackmaass/Chokepoint/actions/workflows/ci.yml) [![claims](https://github.com/Hackmaass/Chokepoint/actions/workflows/claims.yml/badge.svg)](https://github.com/Hackmaass/Chokepoint/actions/workflows/claims.yml) ![data](https://img.shields.io/badge/data-synthetic-informational) ![license](https://img.shields.io/badge/license-MIT-blue) ![FalkorDB](https://img.shields.io/badge/FalkorDB-v4.22.0-orange)
 
@@ -22,6 +22,7 @@ Built for [Graph Hacks: Context for AI Agents](https://www.wemakedevs.org/hackat
 ### For judges in a hurry
 
 - **Live:** <https://chokepoint-uou2.onrender.com/> (landing page; **Open the demo** for the app; the 8 example alerts replay saved runs and run the tools).
+- **See the graph doing the work, in one command:** `docker exec chokepoint-api python scripts/graph_tour.py` (region, copy check, FalkorDB's wrong max-flow answer and its repair, the receipt chain, cleanup). The graph is mapped in [Graph data model](#graph-data-model).
 - **60-second path:** [`docs/for-judges.md`](docs/for-judges.md): what is real, what is not, a removal test, and where each claim can be checked.
 - **Every measured number in one command**, no key and no model: `docker exec chokepoint-api python scripts/judge_check.py` (or `uv run python scripts/judge_check.py`). Measured lines can fail; the held-out figures are printed as RECORDED, never as PASS.
 - **Run it in two minutes, no dataset download:** `docker build -f Dockerfile.hosted -t chokepoint-hosted . && docker run -p 7860:7860 chokepoint-hosted`, then open <http://localhost:7860/>. It holds a 4,453-transfer slice with the neighbourhoods of the 8 example alerts (about 100 MB of memory); any other account needs the full stack below.
@@ -37,6 +38,7 @@ The on-time submission is the tag [`graphhacks-ontime-submission`](https://githu
 - **Receipts are hash-chained** (`src/chokepoint/chain.py`): every ToolCall, Finding, FreezePlan, FreezeOrder and Dispatch stores `hash = sha256(canon + "|" + parent_hash)`; the Receipt tab's **Verify chain** button re-hashes them in the browser with WebCrypto (the server sends the exact text it hashed, so nothing is re-serialised), and the ops issue carries the order's chain hash. `tests/test_chain.py` changes one stored finding (or order) and the check fails at that record. Records written before this change are reported as unchained, not as broken. This detects edits to stored receipts; it is not a signature (anyone with write access to the database could rebuild the chain).
 - **Claims that check themselves** (`claims.json`, `scripts/check_claims.py`, `.github/workflows/claims.yml`): the headline numbers in this README, `docs/for-judges.md` and the landing page are marked and compared with `claims.json` in CI, so editing one by hand turns the badge red (`tests/test_claims.py`). Recorded numbers must appear in their evidence file (`docs/pilot-results.md`, `docs/guarantee-and-latency.md`); measured ones are re-derived against the database by `uv run python scripts/judge_check.py --claims`. CI has no dataset, so it cannot recompute the held-out figures: they stay labelled RECORDED.
 - **Public MCP endpoint** (`/mcp`, streamable HTTP, same nine tools; `src/chokepoint/api.py`, footer popup "Connect your agent (MCP)" in the app): `claude mcp add --transport http chokepoint https://<host>/mcp`. No approve or dispatch tool exists on it (tests: `tests/test_mcp_http.py` lists the tools over HTTP and runs open_case, freeze_plan, verify_plan). It shares the tool rate limit; there are no per-visitor tokens because `/api/tools` is already open to the same visitors, so a token would add no protection.
+- **Graph map and a one-command tour** (organizers' submission tips: map the graph, show it doing the work): the data model section now draws the stored graph and the scratch graphs from the actual `CREATE` statements, and `scripts/graph_tour.py` prints what FalkorDB holds and computed and cleans up after itself (`tests/test_graph_tour.py`).
 - **Max-flow repaired inside FalkorDB** (`src/chokepoint/algo/residual.py`, `solve` in `algo/cut.py`): a failed certificate no longer falls back to NetworkX; Edmonds-Karp runs on a residual scratch graph in FalkorDB. The 11-edge repro: first pass <!--claim:repro_first_pass-->300<!--/claim-->, certificate fails, repair <!--claim:repro_true-->453<!--/claim-->, label `falkordb+repair`. 300+ new random node-split networks match the exact oracle with 0 `networkx-emergency` (`tests/test_cut_oracle.py`, a new seed range, not the held-out set). The route checks in `toolbox.py` use `algo.BFS` instead of NetworkX. Plans for the 8 examples are unchanged; median open-case-to-verified-plan time on the 8 examples went 0.34 s to 0.36 s (measured side by side on the same machine).
 - **Dispatcher** (`src/chokepoint/dispatch.py`): after a named person approves a verified plan, holds are placed on the frozen accounts in the graph and one freeze request is filed as a GitHub issue in a public ops repo (synthetic data, no bank is called). One issue per plan hash; if GitHub is unreachable or no token is set the dispatch stays `queued` and the UI says so. An order can be withdrawn by a named person, which lifts the holds. It is not a tool, not in MCP, and the model cannot reach it (tests assert this).
 - **Live agent by default when the server has a model key** (`NVIDIA_API_KEY`): the visitor can type their own question about an example alert. If the model is rate-limited or down, the run says "Live model unavailable right now, showing a recorded run" and plays the saved run for that alert (a custom question has no saved run and reports the failure). Tested with a mocked 429.
@@ -105,9 +107,9 @@ Chokepoint is entered in Track 2 as well. Where the product does it, and where i
 |---|---|
 | Storage and traversal | 4.49 million transfers over 422,734 accounts as `(:Account)-[:TRANSFER]->(:Account)`; per-hop frontier queries with indexes on `Account.id` and `TRANSFER.ts` |
 | Algorithm | `algo.maxFlow` on a node-split network as a **certified first pass**; a failed certificate is **repaired in FalkorDB** (residual graph + `shortestPath`, cut from `algo.BFS`), then certified again |
-| Verification | `GRAPH.COPY`, `DELETE` of the frozen accounts, then `shortestPath` to every perimeter account |
-| Memory and provenance | `Case`, `ToolCall`, `Finding`, `FreezePlan` nodes linked to the accounts they read; `resume_case` and `explain_finding` are traversals |
-| Isolation | labels live in a separate `eval_ibm` graph that no planning tool can read; scratch graphs `case_<id>_run_<n>` are disposable |
+| Verification | `GRAPH.COPY`, `DELETE` of the frozen accounts, then `shortestPath` to every perimeter account; a second check re-expands the source graph hop by hop without the frozen accounts |
+| Memory and provenance | `Case`, `ToolCall`, `Finding`, `FreezePlan`, `FreezeOrder`, `Dispatch` nodes, hash-chained, linked to the accounts they read; holds on `Account`; `resume_case`, `explain_finding` and the late-data re-run are traversals |
+| Isolation | labels live in a separate `eval_ibm` graph that no planning tool can read; scratch graphs (`case_<id>_run_<n>`, `plan_*`, `flow_*`, `*_res`, `reach_*`) are disposable |
 
 Remove FalkorDB and the transfers, the per-hop region queries, the max-flow, the repair of its wrong answers, the route checks, the copy check and the case memory are gone. Since the late-submission build the solver itself runs in FalkorDB: `algo.maxFlow` is the first pass, and when its answer fails the certificate it is **repaired inside the database** (Edmonds-Karp on a residual scratch graph, using `shortestPath` for each augmenting path and `algo.BFS` for the cut). The route checks use `algo.BFS` on a scratch graph too. NetworkX remains only as a test oracle and as an emergency path labelled `networkx-emergency`, which `scripts/judge_check.py` counts (0 on the batch it runs). Measured by `judge_check.py`: every max-flow on the new random networks and on the 8 examples is certified, the solver label says whether the first pass or the repair produced it, and the plans for the 8 examples are unchanged (`tests/test_replays.py`).
 
@@ -117,24 +119,76 @@ Remove FalkorDB and the transfers, the per-hop region queries, the max-flow, the
 
 ## Graph data model
 
+The graph the product stores (`tenant_ibm`). Everything an agent run produces is a node here, so a case can be resumed, explained and re-checked by traversal.
+
 ```mermaid
 graph LR
-  A1((Account)) -- "TRANSFER {tid, ts, amt, cur, fmt, batch}" --> A2((Account))
+  A1((Account)) -- "TRANSFER" --> A2((Account))
   C[Case] -- HAS --> F[Finding]
   TC[ToolCall] -- RUN_IN --> C
   TC -- PRODUCED --> F
   TC -- "READ (scope)" --> A1
+  F -- SUPERSEDED_BY --> F2[Finding, newer]
   F -- HAS_PLAN --> P[FreezePlan]
   P -- FREEZES --> A1
   P -- ORDERED_AS --> O[FreezeOrder]
   O -- FOR_ACCOUNT --> A1
+  O -- DISPATCHED_AS --> D[Dispatch]
   B[Batch]
 ```
 
-- `tenant_ibm`: `Account {id}` (`"bank:account"`); `TRANSFER {tid, ts (epoch minutes), amt (integer cents of the paying currency), cur, fmt, batch}`; self-transfers dropped. `Case {id, origin, alert_ts, window_min, hops, data_version}`; `ToolCall {id, tool, params, data_version, solver, ran_at, duration_ms}`; `Finding {id, kind, key, value, status, version, data_version}`; `FreezePlan {id, cost, lambda, size, hops, verified}`; `FreezeOrder {id, approver, reason, plan_hash, data_version, verification, created_at, status}` (a person's approval, removed with its case); `Batch {id}` (data versions).
-- `eval_ibm`: `TransferLabel {tid, pattern, laundering}`, read only by the evaluation code.
-- Scratch graphs `case_<id>_run_<n>` and `..._v`: the region as `(:A)-[:T]->(:A)`, built per verification and deleted after.
+| Node or edge | Properties (from the `CREATE` statements in `src/chokepoint/`) |
+|---|---|
+| `Account` | `id` (`"bank:account"`); `hold`, `hold_since` while an approved order holds it |
+| `TRANSFER` | `tid`, `ts` (epoch minutes), `amt` (integer cents of the paying currency), `cur`, `fmt`, `batch`; self-transfers dropped; indexes on `Account.id` and `TRANSFER.ts`. 4,487,133 of them over 422,734 accounts |
+| `Case` | `id`, `origin`, `alert_ts`, `window_min`, `hops`, `data_version`, `status`, `created_at` |
+| `ToolCall` | `id`, `tool`, `params`, `data_version`, `solver`, `ran_at`, `duration_ms`, `hash`, `parent_hash`; `READ` edges to the accounts it looked at |
+| `Finding` | `id`, `kind`, `key`, `value`, `status`, `version`, `data_version`, `complete`, `hash`, `parent_hash` |
+| `FreezePlan` | `id`, `cost`, `lambda`, `size`, `hops`, `verified`, `hash`, `parent_hash` |
+| `FreezeOrder` | `id`, `approver`, `reason`, `plan_hash`, `data_version`, `verification`, `created_at`, `status`, `hash`, `parent_hash` (a person's approval; withdrawn orders stay, marked) |
+| `Dispatch` | `id`, `channel`, `plan_hash`, `status` (`sent` / `queued`), `url`, `payload_hash`, `note`, `sent_at`, `hash`, `parent_hash` |
+| `Batch` | `id` (data versions; simulated late transfers get their own) |
+
+`eval_ibm` is a separate graph holding `TransferLabel {tid, pattern, laundering}`, read only by the evaluation code, so no planning tool can see a label.
+
+Scratch graphs are built per computation, hold no history, and are deleted afterwards (`GRAPH.LIST` shows none left; `scripts/graph_tour.py` checks):
+
+```mermaid
+graph TD
+  R[region from the tenant graph] --> V["case_ID_run_N: A nodes, T edges"]
+  V -- "GRAPH.COPY, delete frozen accounts" --> VC["case_ID_run_N_v"]
+  R --> M["flow_* / plan_*: N nodes, E edges with cap"]
+  M -- "certificate fails" --> RS["*_res: N nodes, R edges with c, plus __T__"]
+  R --> RC["reach_*: A nodes, T and B edges, plus __P__"]
+```
+
+| Scratch graph | Built by | Used for |
+|---|---|---|
+| `case_<id>_run_<n>` (`A`, `T`) and its `GRAPH.COPY` `..._v` | `Toolbox.tool_verify_plan` | the check on a copy: `shortestPath` to every perimeter account before and after deleting the frozen accounts |
+| `plan_*`, `flow_*` (`N`, `E` with `cap`) | `algo/cut.py` | `algo.maxFlow`, the first pass |
+| `*_res` (`N`, `R` with `c`, plus `__T__`) | `algo/residual.py` | the in-database repair: `shortestPath` per augmenting path, `algo.BFS` for the cut |
+| `reach_*` (`A`, `T` forward, `B` reversed, plus `__P__`) | `Toolbox._reach` | route checks with `algo.BFS` |
+
 - Case, plan and finding ids are derived from their inputs, so every tool is idempotent and a saved agent run can be replayed.
+
+### See the graph doing the work
+
+One command, no key, no model; it prints what FalkorDB holds and computed, then removes its own case:
+
+```bash
+docker exec chokepoint-api python scripts/graph_tour.py     # or: uv run python scripts/graph_tour.py
+```
+
+It shows the region size, the check on a copy (reachable before and after), the 11-edge max-flow repro coming back as `falkordb+repair`, the solver labels stored on the case's `ToolCall` nodes, the receipt chain read with one path query, and the scratch graphs before and after. To look yourself, open FalkorDB Browser (`http://localhost:3000` with the local compose stack), choose `tenant_ibm`, and run:
+
+```cypher
+// the cases, plans and orders the agent stored, newest first
+MATCH (c:Case)-[:HAS]->(f:Finding)-[:HAS_PLAN]->(p:FreezePlan) RETURN c.origin, p.id, p.size, p.verified ORDER BY c.created_at DESC LIMIT 10
+// which accounts a stored tool run read (the scope that decides what late data re-runs)
+MATCH (tc:ToolCall)-[:READ]->(a:Account) WHERE tc.tool = 'freeze_plan' RETURN tc.id, count(a) LIMIT 10
+// accounts currently held by an approved order
+MATCH (a:Account) WHERE a.hold IS NOT NULL RETURN a.id, a.hold, a.hold_since
+```
 
 ## Queries and algorithms the product depends on
 
